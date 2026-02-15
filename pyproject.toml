@@ -21,6 +21,7 @@ dependencies = [
     "pillow-jpls>=1.0.0",
     "tenacity>=9.0.0",
     "pyyaml>=6.0.2",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
