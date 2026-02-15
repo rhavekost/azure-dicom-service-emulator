@@ -1,7 +1,7 @@
 """UPS-RS (Unified Procedure Step) router."""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -125,6 +125,60 @@ async def create_workitem(
         status_code=201,
         headers={"Location": f"/v2/workitems/{workitem_uid}"}
     )
+
+
+@router.get(
+    "/workitems",
+    summary="Search workitems (UPS-RS)",
+)
+async def search_workitems(
+    PatientID: str | None = Query(default=None),
+    PatientName: str | None = Query(default=None),
+    ProcedureStepState: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Search for workitems.
+
+    Query parameters:
+    - PatientID: Filter by patient identifier
+    - PatientName: Filter by patient name (case-insensitive)
+    - ProcedureStepState: Filter by state (SCHEDULED, IN PROGRESS, etc.)
+    - limit: Max results (default 100)
+    - offset: Pagination offset
+
+    Returns:
+    - 200 OK with array of workitems (transaction UIDs removed)
+    """
+    query = select(Workitem)
+
+    # Apply filters
+    if PatientID:
+        query = query.where(Workitem.patient_id == PatientID)
+
+    if PatientName:
+        query = query.where(Workitem.patient_name.ilike(f"%{PatientName}%"))
+
+    if ProcedureStepState:
+        query = query.where(Workitem.procedure_step_state == ProcedureStepState)
+
+    # Apply pagination
+    query = query.offset(offset).limit(limit)
+
+    # Execute query
+    result = await db.execute(query)
+    workitems = result.scalars().all()
+
+    # Format results (remove transaction UIDs)
+    results = []
+    for workitem in workitems:
+        dataset = workitem.dicom_dataset.copy()
+        dataset.pop("00081195", None)  # Remove transaction UID
+        results.append(dataset)
+
+    return results
 
 
 @router.get(
