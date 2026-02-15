@@ -1,5 +1,6 @@
 """Event publishing services."""
 
+from app.services.events.config import load_providers_from_config
 from app.services.events.manager import EventManager
 from app.services.events.providers import (
     AzureStorageQueueProvider,
@@ -16,4 +17,5 @@ __all__ = [
     "FileEventProvider",
     "InMemoryEventProvider",
     "WebhookEventProvider",
+    "load_providers_from_config",
 ]
