@@ -152,13 +152,13 @@ class Workitem(Base):
 
     # Primary identifier
     sop_instance_uid: Mapped[str] = mapped_column(
-        String(64),
+        String(128),  # Fixed: Changed from 64 to 128 for consistency with other models
         primary_key=True
     )
 
     # Ownership and state
     transaction_uid: Mapped[str | None] = mapped_column(
-        String(64),
+        String(128),  # Fixed: Changed from 64 to 128 for consistency with other models
         nullable=True
     )
     procedure_step_state: Mapped[str] = mapped_column(
@@ -181,7 +181,7 @@ class Workitem(Base):
 
     # Study reference
     study_instance_uid: Mapped[str | None] = mapped_column(
-        String(64),
+        String(128),  # Fixed: Changed from 64 to 128 for consistency with other models
         nullable=True,
         index=True
     )
@@ -196,7 +196,8 @@ class Workitem(Base):
     # Request references (for search)
     accession_number: Mapped[str | None] = mapped_column(
         String(64),
-        nullable=True
+        nullable=True,
+        index=True  # Fixed: Added index for search performance
     )
     requested_procedure_id: Mapped[str | None] = mapped_column(
         String(64),
@@ -232,4 +233,10 @@ class Workitem(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # Composite indexes for common query patterns
+    __table_args__ = (
+        Index("ix_workitem_state_patient", "procedure_step_state", "patient_id"),
+        Index("ix_workitem_state_scheduled", "procedure_step_state", "scheduled_procedure_step_start_datetime"),
     )
