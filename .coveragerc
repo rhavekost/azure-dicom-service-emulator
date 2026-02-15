@@ -1,0 +1,32 @@
+[run]
+source = app
+omit =
+    */tests/*
+    */venv/*
+    */.venv/*
+    */migrations/*
+    */__pycache__/*
+    main.py
+    smoke_test.py
+
+[report]
+precision = 2
+show_missing = true
+skip_covered = false
+fail_under = 61.0
+
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    pass
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
