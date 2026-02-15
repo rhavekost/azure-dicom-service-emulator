@@ -37,6 +37,7 @@ from app.services.multipart import parse_multipart_related, build_multipart_resp
 from app.services.frame_cache import FrameCache
 from app.services.image_rendering import render_frame as render_frame_to_image
 from app.services.upsert import upsert_instance
+from app.services.search_utils import build_fuzzy_name_filter
 
 logger = logging.getLogger(__name__)
 
@@ -763,7 +764,19 @@ async def qido_rs_studies(
     fuzzymatching: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
-    """QIDO-RS: Search for studies."""
+    """QIDO-RS: Search for studies.
+
+    Query parameters:
+    - PatientName: Patient name (supports exact match and wildcard)
+    - fuzzymatching: Enable fuzzy prefix matching on person names (default: false)
+    - limit: Maximum number of results (default: 100)
+    - offset: Offset for pagination (default: 0)
+
+    When fuzzymatching=true, person name queries use prefix word matching:
+    - "joh" matches "John^Doe" (starts with "John")
+    - "do" matches "Doe^John" (starts with "Doe")
+    - "joh do" matches "John^Doe" (matches both components)
+    """
     filters = _parse_qido_params(request.query_params, fuzzymatching)
 
     # Build query for distinct studies
@@ -950,7 +963,8 @@ def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
                     pattern = value.replace("*", "%")
                     filters.append(column.ilike(pattern))
                 elif fuzzymatching and db_column in ("patient_name", "referring_physician_name"):
-                    filters.append(column.ilike(f"%{value}%"))
+                    # Use prefix word matching for person names
+                    filters.append(build_fuzzy_name_filter(value, column))
                 else:
                     filters.append(column == value)
 
