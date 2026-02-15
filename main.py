@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import dicomweb, changefeed, extended_query_tags, operations
+from app.routers import dicomweb, changefeed, extended_query_tags, operations, debug
 from app.services.events import EventManager, load_providers_from_config
 
 
@@ -76,6 +76,9 @@ app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])
 app.include_router(changefeed.router, prefix="/v2", tags=["Change Feed"])
 app.include_router(extended_query_tags.router, prefix="/v2", tags=["Extended Query Tags"])
 app.include_router(operations.router, prefix="/v2", tags=["Operations"])
+
+# ── Debug Endpoints ────────────────────────────────────────────────
+app.include_router(debug.router, tags=["Debug"])
 
 
 @app.get("/health", tags=["Health"])
