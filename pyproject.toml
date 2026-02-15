@@ -26,10 +26,31 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # Existing
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=1.3.0",
+
+    # Coverage & Reporting
+    "pytest-cov>=4.1.0",
+    "coverage[toml]>=7.4.0",
+
+    # Performance Testing
+    "pytest-benchmark>=4.0.0",
+    "locust>=2.20.0",
+
+    # Security
+    "bandit>=1.7.6",
+    "safety>=3.0.0",
+
+    # Test Execution
+    "pytest-xdist>=3.5.0",
+    "pytest-html>=4.1.0",
+
+    # Test Data
+    "faker>=22.0.0",
+    "factory-boy>=3.3.0",
 ]
 
 [build-system]
