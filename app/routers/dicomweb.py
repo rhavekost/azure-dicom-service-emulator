@@ -9,8 +9,10 @@ Implements:
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, HTTPException
@@ -31,10 +33,15 @@ from app.services.dicom_engine import (
     build_store_response,
 )
 from app.services.multipart import parse_multipart_related, build_multipart_response
+from app.services.frame_cache import FrameCache
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Initialize frame cache
+DICOM_STORAGE_DIR = Path(os.getenv("DICOM_STORAGE_DIR", "/data/dicom"))
+frame_cache = FrameCache(DICOM_STORAGE_DIR)
 
 # ── Tag mapping for QIDO-RS query parameters ───────────────────────
 QIDO_TAG_MAP = {
@@ -326,6 +333,95 @@ async def wado_rs_instance_metadata(
     return await _retrieve_metadata(
         db, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
     )
+
+
+@router.get("/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frames}")
+async def retrieve_frames(
+    study_uid: str,
+    series_uid: str,
+    instance_uid: str,
+    frames: str,
+    accept: str = Header(default="application/octet-stream"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve one or more frames from a DICOM instance.
+
+    Frames parameter:
+    - Single frame: "1"
+    - Multiple frames: "1,3,5"
+
+    Accept header:
+    - application/octet-stream (single frame only)
+    - multipart/related; type="application/octet-stream" (multiple frames)
+    """
+    # Parse frame numbers
+    frame_numbers = [int(f.strip()) for f in frames.split(",")]
+
+    # Verify instance exists in database
+    result = await db.execute(
+        select(DicomInstance).where(
+            DicomInstance.study_instance_uid == study_uid,
+            DicomInstance.series_instance_uid == series_uid,
+            DicomInstance.sop_instance_uid == instance_uid,
+        )
+    )
+    db_instance = result.scalar_one_or_none()
+
+    if not db_instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    # Single frame retrieval
+    if len(frame_numbers) == 1:
+        try:
+            frame_path = frame_cache.get_frame(study_uid, series_uid, instance_uid, frame_numbers[0])
+            frame_data = frame_path.read_bytes()
+
+            return Response(
+                content=frame_data,
+                media_type="application/octet-stream",
+            )
+        except ValueError as e:
+            if "out of range" in str(e):
+                raise HTTPException(status_code=404, detail=str(e))
+            elif "no pixel data" in str(e) or "decodable pixel data" in str(e):
+                raise HTTPException(status_code=404, detail="Instance does not contain pixel data")
+            else:
+                raise HTTPException(status_code=500, detail=str(e))
+
+    # Multiple frames - multipart/related response
+    else:
+        try:
+            frame_parts = []
+            for frame_num in frame_numbers:
+                frame_path = frame_cache.get_frame(study_uid, series_uid, instance_uid, frame_num)
+                frame_data = frame_path.read_bytes()
+                frame_parts.append(frame_data)
+
+            # Build multipart response
+            boundary = "frame_boundary"
+            content_parts = []
+
+            for i, frame_data in enumerate(frame_parts):
+                content_parts.append(f"--{boundary}\r\n".encode())
+                content_parts.append(b"Content-Type: application/octet-stream\r\n")
+                content_parts.append(f"Content-Length: {len(frame_data)}\r\n\r\n".encode())
+                content_parts.append(frame_data)
+                content_parts.append(b"\r\n")
+
+            content_parts.append(f"--{boundary}--\r\n".encode())
+
+            multipart_content = b"".join(content_parts)
+
+            return Response(
+                content=multipart_content,
+                media_type=f'multipart/related; type="application/octet-stream"; boundary={boundary}',
+            )
+        except ValueError as e:
+            if "out of range" in str(e):
+                raise HTTPException(status_code=404, detail=str(e))
+            else:
+                raise HTTPException(status_code=500, detail=str(e))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
