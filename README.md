@@ -17,6 +17,9 @@ Microsoft archived `microsoft/dicom-server` and there's no official local emulat
 | `/v2/studies/{study}/metadata` | `GET` | WADO-RS — study metadata |
 | `/v2/studies/{study}/series/{series}` | `GET` | WADO-RS — retrieve series |
 | `/v2/studies/{study}/series/{series}/instances/{instance}` | `GET` | WADO-RS — retrieve instance |
+| `/v2/studies/{study}/series/{series}/instances/{instance}/frames/{frames}` | `GET` | WADO-RS — retrieve frames (single or comma-separated) |
+| `/v2/studies/{study}/series/{series}/instances/{instance}/rendered` | `GET` | WADO-RS — rendered instance as JPEG/PNG |
+| `/v2/studies/{study}/series/{series}/instances/{instance}/frames/{frames}/rendered` | `GET` | WADO-RS — rendered frame as JPEG/PNG |
 | `/v2/studies` | `GET` | QIDO-RS — search studies |
 | `/v2/studies/{study}/series` | `GET` | QIDO-RS — search series |
 | `/v2/studies/{study}/series/{series}/instances` | `GET` | QIDO-RS — search instances |
@@ -72,6 +75,35 @@ pip install pydicom httpx
 python scripts/smoke_test.py http://localhost:8080
 ```
 
+### Frame Retrieval Examples
+
+**Retrieve single frame:**
+```bash
+curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instance}/frames/1 \
+  -H "Accept: application/octet-stream" \
+  -o frame1.raw
+```
+
+**Retrieve multiple frames:**
+```bash
+curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instance}/frames/1,3,5 \
+  -H "Accept: multipart/related; type=application/octet-stream"
+```
+
+**Render instance as JPEG:**
+```bash
+curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instance}/rendered \
+  -H "Accept: image/jpeg" \
+  -o rendered.jpg
+```
+
+**Render specific frame as PNG:**
+```bash
+curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instance}/frames/1/rendered?quality=85 \
+  -H "Accept: image/png" \
+  -o frame1.png
+```
+
 ## Architecture
 
 ```
@@ -112,9 +144,22 @@ python scripts/smoke_test.py http://localhost:8080
 | `DATABASE_URL` | `postgresql+asyncpg://emulator:emulator@postgres:5432/dicom_emulator` | PostgreSQL connection |
 | `DICOM_STORAGE_DIR` | `/data/dicom` | Where DCM files are stored |
 
+## Storage Layout
+
+```
+{DICOM_STORAGE_DIR}/
+  {study_uid}/
+    {series_uid}/
+      {instance_uid}/
+        instance.dcm          # Original DICOM file
+        frames/               # Cached extracted frames
+          1.raw
+          2.raw
+```
+
 ## Roadmap
 
-- [ ] WADO-RS frames and rendered endpoints
+- [x] WADO-RS frames and rendered endpoints
 - [ ] Fuzzy matching for PatientName in QIDO-RS
 - [ ] Event Grid emulation (webhook notifications)
 - [ ] Auth mock (accept any bearer token)
