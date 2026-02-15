@@ -146,7 +146,7 @@ def test_update_in_progress_with_wrong_txn_uid(client: TestClient):
 
 
 def test_cannot_update_completed_workitem(client: TestClient):
-    """Cannot update COMPLETED workitem - should fail with 409."""
+    """Cannot update COMPLETED workitem - should fail with 400."""
     # Create workitem
     workitem_uid = "1.2.3.4.5.104"
     payload = {
@@ -186,7 +186,7 @@ def test_cannot_update_completed_workitem(client: TestClient):
         "00100010": {"vr": "PN", "Value": [{"Alphabetic": "Updated^Patient"}]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}", json=update)
-    assert response.status_code == 409
+    assert response.status_code == 400
     assert "Cannot update workitem in COMPLETED state" in response.json()["detail"]
 
 

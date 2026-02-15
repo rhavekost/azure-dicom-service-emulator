@@ -224,10 +224,17 @@ async def update_workitem(
             detail="Cannot modify Transaction UID"
         )
 
+    # Check terminal states first (400 Bad Request)
+    if workitem.procedure_step_state in ["COMPLETED", "CANCELED"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot update workitem in {workitem.procedure_step_state} state"
+        )
+
     # Extract transaction UID from request header
     txn_uid = request.headers.get("Transaction-UID")
 
-    # Check if update is allowed (uses state machine)
+    # Check transaction UID ownership (409 Conflict)
     from app.services.ups_state_machine import can_update_workitem, StateTransitionError
 
     try:
