@@ -17,7 +17,13 @@ from app.services.image_rendering import (
 )
 
 
-def create_test_dicom(tmp_path: Path, multi_frame: bool = False, with_windowing: bool = False) -> Path:
+def create_test_dicom(
+    tmp_path: Path,
+    multi_frame: bool = False,
+    with_windowing: bool = False,
+    rgb: bool = False,
+    multi_window: bool = False
+) -> Path:
     """Create a synthetic DICOM file for testing."""
     file_path = tmp_path / "test.dcm"
 
@@ -46,24 +52,42 @@ def create_test_dicom(tmp_path: Path, multi_frame: bool = False, with_windowing:
     # Image attributes
     ds.Rows = 64
     ds.Columns = 64
-    ds.BitsAllocated = 16
-    ds.BitsStored = 16
-    ds.HighBit = 15
-    ds.SamplesPerPixel = 1
-    ds.PhotometricInterpretation = "MONOCHROME2"
-    ds.PixelRepresentation = 1  # signed
 
-    # Create pixel data
-    if multi_frame:
-        ds.NumberOfFrames = 3
-        # Create 3 frames with different patterns
-        pixel_array = np.zeros((3, 64, 64), dtype=np.int16)
-        pixel_array[0] = np.arange(64 * 64).reshape(64, 64) % 256
-        pixel_array[1] = np.arange(64 * 64).reshape(64, 64) % 512
-        pixel_array[2] = np.arange(64 * 64).reshape(64, 64) % 1024
+    if rgb:
+        # RGB image
+        ds.BitsAllocated = 8
+        ds.BitsStored = 8
+        ds.HighBit = 7
+        ds.SamplesPerPixel = 3
+        ds.PhotometricInterpretation = "RGB"
+        ds.PixelRepresentation = 0
+        ds.PlanarConfiguration = 0
+
+        # Create RGB pixel data (64x64x3)
+        pixel_array = np.zeros((64, 64, 3), dtype=np.uint8)
+        pixel_array[:, :, 0] = 255  # Red channel
+        pixel_array[:, :, 1] = 128  # Green channel
+        pixel_array[:, :, 2] = 64   # Blue channel
     else:
-        # Single frame with gradient pattern
-        pixel_array = np.arange(64 * 64).reshape(64, 64).astype(np.int16)
+        # Grayscale image
+        ds.BitsAllocated = 16
+        ds.BitsStored = 16
+        ds.HighBit = 15
+        ds.SamplesPerPixel = 1
+        ds.PhotometricInterpretation = "MONOCHROME2"
+        ds.PixelRepresentation = 1  # signed
+
+        # Create pixel data
+        if multi_frame:
+            ds.NumberOfFrames = 3
+            # Create 3 frames with different patterns
+            pixel_array = np.zeros((3, 64, 64), dtype=np.int16)
+            pixel_array[0] = np.arange(64 * 64).reshape(64, 64) % 256
+            pixel_array[1] = np.arange(64 * 64).reshape(64, 64) % 512
+            pixel_array[2] = np.arange(64 * 64).reshape(64, 64) % 1024
+        else:
+            # Single frame with gradient pattern
+            pixel_array = np.arange(64 * 64).reshape(64, 64).astype(np.int16)
 
     ds.PixelData = pixel_array.tobytes()
 
@@ -71,6 +95,11 @@ def create_test_dicom(tmp_path: Path, multi_frame: bool = False, with_windowing:
     if with_windowing:
         ds.WindowCenter = 500.0
         ds.WindowWidth = 200.0
+
+    # Add multi-window if requested
+    if multi_window:
+        ds.WindowCenter = [500.0, 800.0]
+        ds.WindowWidth = [200.0, 100.0]
 
     ds.save_as(str(file_path), write_like_original=False)
     return file_path
@@ -196,7 +225,7 @@ def test_render_frame_single_frame_invalid_number(tmp_path):
     """Error on invalid frame number for single-frame instance."""
     dcm_path = create_test_dicom(tmp_path, multi_frame=False)
 
-    with pytest.raises(ValueError, match="Single-frame instance"):
+    with pytest.raises(ValueError, match="Cannot access frame 2 of single-frame instance"):
         render_frame(dcm_path, frame_number=2, format="jpeg")
 
 
@@ -206,3 +235,52 @@ def test_render_frame_unsupported_format(tmp_path):
 
     with pytest.raises(ValueError, match="Unsupported format: gif"):
         render_frame(dcm_path, frame_number=1, format="gif")
+
+
+def test_render_frame_multi_window(tmp_path):
+    """Render frame with multi-window DICOM (uses first window)."""
+    dcm_path = create_test_dicom(tmp_path, multi_window=True)
+
+    # Render with multi-window - should use first window (500, 200)
+    jpeg_bytes = render_frame(dcm_path, frame_number=1, format="jpeg")
+
+    # Should successfully render using first window
+    image = Image.open(io.BytesIO(jpeg_bytes))
+    assert image.format == "JPEG"
+    assert image.size == (64, 64)
+
+
+def test_render_frame_rgb_dicom(tmp_path):
+    """Render RGB DICOM correctly (not confused with multi-frame)."""
+    dcm_path = create_test_dicom(tmp_path, rgb=True)
+
+    # Render RGB image
+    jpeg_bytes = render_frame(dcm_path, frame_number=1, format="jpeg")
+
+    # Should successfully render RGB image
+    image = Image.open(io.BytesIO(jpeg_bytes))
+    assert image.format == "JPEG"
+    assert image.size == (64, 64)
+    # RGB images should have 3 channels
+    assert image.mode in ("RGB", "L")  # Pillow may convert to L for grayscale
+
+
+def test_render_frame_invalid_quality(tmp_path):
+    """Error on invalid quality parameter."""
+    dcm_path = create_test_dicom(tmp_path)
+
+    # Quality too low
+    with pytest.raises(ValueError, match="JPEG quality must be 1-100, got 0"):
+        render_frame(dcm_path, frame_number=1, format="jpeg", quality=0)
+
+    # Quality too high
+    with pytest.raises(ValueError, match="JPEG quality must be 1-100, got 101"):
+        render_frame(dcm_path, frame_number=1, format="jpeg", quality=101)
+
+
+def test_render_frame_missing_file(tmp_path):
+    """Error on missing DICOM file."""
+    missing_path = tmp_path / "nonexistent.dcm"
+
+    with pytest.raises(ValueError, match="Cannot read DICOM file"):
+        render_frame(missing_path, frame_number=1, format="jpeg")

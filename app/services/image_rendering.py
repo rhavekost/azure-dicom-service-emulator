@@ -35,24 +35,38 @@ def render_frame(
         f"Rendering frame {frame_number} from {dcm_path} as {format} (quality={quality})"
     )
 
-    ds = pydicom.dcmread(dcm_path)
+    # Validate quality parameter for JPEG
+    if format.lower() == "jpeg" and not (1 <= quality <= 100):
+        raise ValueError(f"JPEG quality must be 1-100, got {quality}")
 
-    if not hasattr(ds, 'pixel_array'):
-        raise ValueError("Instance does not contain pixel data")
+    # Read DICOM file with error handling
+    try:
+        ds = pydicom.dcmread(dcm_path)
+    except (FileNotFoundError, PermissionError) as e:
+        raise ValueError(f"Cannot read DICOM file {dcm_path}: {e}") from e
+    except Exception as e:
+        raise ValueError(f"Invalid DICOM file {dcm_path}: {e}") from e
 
-    pixel_array = ds.pixel_array
+    # Access pixel_array with proper error handling
+    try:
+        pixel_array = ds.pixel_array
+    except (AttributeError, NotImplementedError) as e:
+        raise ValueError("Instance does not contain decodable pixel data") from e
 
-    # Extract specific frame if multi-frame
-    if len(pixel_array.shape) == 3:
-        if frame_number < 1 or frame_number > pixel_array.shape[0]:
+    # Check for multi-frame using NumberOfFrames attribute
+    num_frames = getattr(ds, 'NumberOfFrames', 1)
+
+    if num_frames > 1:
+        # Multi-frame image
+        if frame_number < 1 or frame_number > num_frames:
             raise ValueError(
-                f"Frame {frame_number} out of range "
-                f"(instance has {pixel_array.shape[0]} frames)"
+                f"Frame {frame_number} out of range (instance has {num_frames} frames)"
             )
         frame_data = pixel_array[frame_number - 1]
     else:
+        # Single frame (could be grayscale or RGB)
         if frame_number != 1:
-            raise ValueError("Single-frame instance")
+            raise ValueError(f"Cannot access frame {frame_number} of single-frame instance")
         frame_data = pixel_array
 
     # Apply windowing if present
@@ -105,9 +119,10 @@ def apply_windowing(
         Windowed pixel array (uint8)
     """
     # Handle multi-window case (use first window)
-    if isinstance(center, list):
+    # Handle both list and pydicom.MultiValue types
+    if not isinstance(center, (int, float)):
         center = float(center[0])
-    if isinstance(width, list):
+    if not isinstance(width, (int, float)):
         width = float(width[0])
 
     arr = pixel_array.astype(np.float32)
