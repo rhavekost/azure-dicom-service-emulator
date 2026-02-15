@@ -34,6 +34,7 @@ from app.services.dicom_engine import (
 )
 from app.services.multipart import parse_multipart_related, build_multipart_response
 from app.services.frame_cache import FrameCache
+from app.services.image_rendering import render_frame as render_frame_to_image
 
 logger = logging.getLogger(__name__)
 
@@ -418,6 +419,152 @@ async def retrieve_frames(
                 raise HTTPException(status_code=404, detail=str(e))
             else:
                 raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/rendered",
+    response_class=Response,
+    summary="Retrieve rendered DICOM instance (WADO-RS)",
+)
+async def retrieve_rendered_instance(
+    study_uid: str,
+    series_uid: str,
+    instance_uid: str,
+    quality: int = Query(default=100, ge=1, le=100),
+    accept: str = Header(default="image/jpeg"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve rendered DICOM instance as JPEG or PNG.
+
+    Query parameters:
+    - quality: JPEG quality (1-100, default: 100, ignored for PNG)
+
+    Accept header:
+    - image/jpeg (default)
+    - image/png
+    """
+    # Verify instance exists
+    result = await db.execute(
+        select(DicomInstance).where(
+            DicomInstance.study_instance_uid == study_uid,
+            DicomInstance.series_instance_uid == series_uid,
+            DicomInstance.sop_instance_uid == instance_uid,
+        )
+    )
+    db_instance = result.scalar_one_or_none()
+
+    if not db_instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    # Determine format from Accept header
+    if "image/png" in accept.lower():
+        format = "png"
+        media_type = "image/png"
+    else:
+        format = "jpeg"
+        media_type = "image/jpeg"
+
+    # Build path to DICOM file
+    dcm_path = DICOM_STORAGE_DIR / study_uid / series_uid / instance_uid / "instance.dcm"
+
+    if not dcm_path.exists():
+        raise HTTPException(status_code=404, detail="Instance file not found")
+
+    try:
+        # Render frame 1 (entire instance)
+        image_bytes = render_frame_to_image(
+            dcm_path,
+            frame_number=1,
+            format=format,
+            quality=quality
+        )
+
+        return Response(
+            content=image_bytes,
+            media_type=media_type,
+        )
+    except ValueError as e:
+        if "no pixel data" in str(e) or "decodable pixel data" in str(e):
+            raise HTTPException(status_code=404, detail="Instance does not contain pixel data")
+        else:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame}/rendered",
+    response_class=Response,
+    summary="Retrieve rendered DICOM frame (WADO-RS)",
+)
+async def retrieve_rendered_frame(
+    study_uid: str,
+    series_uid: str,
+    instance_uid: str,
+    frame: int,
+    quality: int = Query(default=100, ge=1, le=100),
+    accept: str = Header(default="image/jpeg"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve rendered DICOM frame as JPEG or PNG.
+
+    Query parameters:
+    - quality: JPEG quality (1-100, default: 100, ignored for PNG)
+
+    Accept header:
+    - image/jpeg (default)
+    - image/png
+    """
+    # Verify instance exists
+    result = await db.execute(
+        select(DicomInstance).where(
+            DicomInstance.study_instance_uid == study_uid,
+            DicomInstance.series_instance_uid == series_uid,
+            DicomInstance.sop_instance_uid == instance_uid,
+        )
+    )
+    db_instance = result.scalar_one_or_none()
+
+    if not db_instance:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    # Determine format from Accept header
+    if "image/png" in accept.lower():
+        format = "png"
+        media_type = "image/png"
+    else:
+        format = "jpeg"
+        media_type = "image/jpeg"
+
+    # Build path to DICOM file
+    dcm_path = DICOM_STORAGE_DIR / study_uid / series_uid / instance_uid / "instance.dcm"
+
+    if not dcm_path.exists():
+        raise HTTPException(status_code=404, detail="Instance file not found")
+
+    try:
+        # Render specific frame
+        image_bytes = render_frame_to_image(
+            dcm_path,
+            frame_number=frame,
+            format=format,
+            quality=quality
+        )
+
+        return Response(
+            content=image_bytes,
+            media_type=media_type,
+        )
+    except ValueError as e:
+        if "out of range" in str(e):
+            raise HTTPException(status_code=404, detail=str(e))
+        elif "no pixel data" in str(e) or "decodable pixel data" in str(e):
+            raise HTTPException(status_code=404, detail="Instance does not contain pixel data")
+        elif "JPEG quality" in str(e):
+            # Quality validation from Task 4
+            raise HTTPException(status_code=400, detail=str(e))
+        else:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
