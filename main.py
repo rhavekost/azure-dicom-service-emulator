@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base, AsyncSessionLocal
-from app.routers import dicomweb, changefeed, extended_query_tags, operations, debug
+from app.routers import dicomweb, changefeed, extended_query_tags, operations, debug, ups
 from app.services.events import EventManager, load_providers_from_config
 from app.services.expiry import delete_expired_studies
 
@@ -107,6 +107,9 @@ app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])
 app.include_router(changefeed.router, prefix="/v2", tags=["Change Feed"])
 app.include_router(extended_query_tags.router, prefix="/v2", tags=["Extended Query Tags"])
 app.include_router(operations.router, prefix="/v2", tags=["Operations"])
+
+# ── UPS-RS Worklist Service ────────────────────────────────────────
+app.include_router(ups.router, prefix="/v2", tags=["UPS-RS"])
 
 # ── Debug Endpoints ────────────────────────────────────────────────
 app.include_router(debug.router, tags=["Debug"])
