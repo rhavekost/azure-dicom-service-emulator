@@ -458,27 +458,37 @@ async def qido_rs_instances(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @router.delete("/studies/{study_uid}")
-async def delete_study(study_uid: str, db: AsyncSession = Depends(get_db)):
+async def delete_study(
+    study_uid: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """Delete an entire study."""
-    return await _delete_instances(db, study_uid=study_uid)
+    return await _delete_instances(db, request, study_uid=study_uid)
 
 
 @router.delete("/studies/{study_uid}/series/{series_uid}")
 async def delete_series(
-    study_uid: str, series_uid: str, db: AsyncSession = Depends(get_db),
+    study_uid: str,
+    series_uid: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete an entire series."""
-    return await _delete_instances(db, study_uid=study_uid, series_uid=series_uid)
+    return await _delete_instances(db, request, study_uid=study_uid, series_uid=series_uid)
 
 
 @router.delete("/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}")
 async def delete_instance(
-    study_uid: str, series_uid: str, instance_uid: str,
+    study_uid: str,
+    series_uid: str,
+    instance_uid: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single instance."""
     return await _delete_instances(
-        db, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
+        db, request, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
     )
 
 
@@ -593,6 +603,7 @@ async def _retrieve_instances(
 
 async def _delete_instances(
     db: AsyncSession,
+    request: Request,
     study_uid: str | None = None,
     series_uid: str | None = None,
     instance_uid: str | None = None,
@@ -612,6 +623,16 @@ async def _delete_instances(
 
     if not instances:
         raise HTTPException(status_code=404, detail="No matching instances found")
+
+    # Track instances for event publishing (need data before deletion)
+    deleted_instances_data = []
+    for inst in instances:
+        deleted_instances_data.append({
+            "study_uid": inst.study_instance_uid,
+            "series_uid": inst.series_instance_uid,
+            "instance_uid": inst.sop_instance_uid,
+            "sequence_number": inst.id,
+        })
 
     for inst in instances:
         # Add change feed entry for deletion
@@ -634,6 +655,23 @@ async def _delete_instances(
         await db.delete(inst)
 
     await db.commit()
+
+    # Publish DicomImageDeleted events (best-effort, after commit)
+    for inst_data in deleted_instances_data:
+        try:
+            event_manager = get_event_manager()
+            event = DicomEvent.from_instance_deleted(
+                study_uid=inst_data["study_uid"],
+                series_uid=inst_data["series_uid"],
+                instance_uid=inst_data["instance_uid"],
+                sequence_number=inst_data["sequence_number"],
+                service_url=str(request.base_url).rstrip("/"),
+            )
+            await event_manager.publish(event)
+        except Exception as e:
+            # Log but don't fail the delete operation
+            logger.error(f"Failed to publish delete event for instance {inst_data['instance_uid']}: {e}")
+
     return Response(status_code=204)
 
 
