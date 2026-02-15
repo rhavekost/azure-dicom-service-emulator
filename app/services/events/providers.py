@@ -1,10 +1,20 @@
 """Event provider base class and implementations."""
 
+import httpx
 import json
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from app.models.events import DicomEvent
+
+logger = logging.getLogger(__name__)
 
 
 class EventProvider(ABC):
@@ -72,3 +82,42 @@ class FileEventProvider(EventProvider):
         with open(self.file_path, "a") as f:
             for event in events:
                 f.write(json.dumps(event.to_dict()) + "\n")
+
+
+class WebhookEventProvider(EventProvider):
+    """Webhook-based event provider with retry logic."""
+
+    def __init__(self, url: str, retry_attempts: int = 3):
+        self.url = url
+        self.retry_attempts = retry_attempts
+
+    def _get_retry_decorator(self):
+        """Get retry decorator with configured attempts."""
+        return retry(
+            stop=stop_after_attempt(self.retry_attempts),
+            wait=wait_exponential(multiplier=1, min=1, max=10),
+            retry=retry_if_exception_type((httpx.HTTPError, Exception)),
+            reraise=True,
+        )
+
+    async def _send_webhook(self, event: DicomEvent) -> None:
+        """Send webhook with exponential backoff retry."""
+        # Apply retry decorator dynamically
+        @self._get_retry_decorator()
+        async def _do_send():
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.url, json=event.to_dict(), timeout=5.0
+                )
+                response.raise_for_status()
+
+        await _do_send()
+
+    async def publish(self, event: DicomEvent) -> None:
+        """Publish event via webhook POST."""
+        await self._send_webhook(event)
+
+    async def publish_batch(self, events: list[DicomEvent]) -> None:
+        """Publish batch of events via webhook (sends each separately)."""
+        for event in events:
+            await self._send_webhook(event)
