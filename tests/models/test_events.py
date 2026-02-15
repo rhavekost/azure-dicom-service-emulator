@@ -3,8 +3,6 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-import pytest
-
 from app.models.events import DicomEvent
 
 
@@ -74,4 +72,21 @@ def test_dicom_event_from_instance():
     assert event.data["imageStudyInstanceUid"] == "1.2.3"
     assert event.data["sequenceNumber"] == 42
     # Verify ID was auto-generated
+    UUID(event.id)
+
+
+def test_dicom_event_from_instance_deleted():
+    """Create DicomImageDeleted event from instance data."""
+    event = DicomEvent.from_instance_deleted(
+        study_uid="1.2.3",
+        series_uid="4.5.6",
+        instance_uid="7.8.9",
+        sequence_number=42,
+        service_url="http://localhost:8080",
+    )
+
+    assert event.event_type == "Microsoft.HealthcareApis.DicomImageDeleted"
+    assert event.subject == "/dicom/studies/1.2.3/series/4.5.6/instances/7.8.9"
+    assert event.data["imageStudyInstanceUid"] == "1.2.3"
+    assert event.data["sequenceNumber"] == 42
     UUID(event.id)
