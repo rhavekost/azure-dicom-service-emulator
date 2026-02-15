@@ -23,3 +23,26 @@ class EventProvider(ABC):
     async def close(self) -> None:
         """Clean up resources."""
         pass
+
+
+class InMemoryEventProvider(EventProvider):
+    """In-memory event provider for testing and debugging."""
+
+    def __init__(self):
+        self.events: list[DicomEvent] = []
+
+    async def publish(self, event: DicomEvent) -> None:
+        """Store event in memory."""
+        self.events.append(event)
+
+    async def publish_batch(self, events: list[DicomEvent]) -> None:
+        """Store batch of events in memory."""
+        self.events.extend(events)
+
+    def get_events(self) -> list[DicomEvent]:
+        """Retrieve all stored events."""
+        return self.events.copy()
+
+    def clear(self) -> None:
+        """Clear all stored events."""
+        self.events.clear()
