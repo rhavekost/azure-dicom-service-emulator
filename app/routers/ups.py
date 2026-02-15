@@ -182,6 +182,19 @@ async def search_workitems(
 
 
 @router.get(
+    "/workitems/subscriptions",
+    status_code=501,
+    summary="List subscriptions (UPS-RS) - NOT IMPLEMENTED",
+)
+async def list_subscriptions():
+    """List all subscriptions - NOT IMPLEMENTED."""
+    raise HTTPException(
+        status_code=501,
+        detail="Subscriptions not implemented in this emulator"
+    )
+
+
+@router.get(
     "/workitems/{workitem_uid}",
     summary="Retrieve workitem (UPS-RS)",
 )
@@ -466,3 +479,29 @@ async def request_cancellation(
     await db.commit()
 
     return Response(status_code=202)
+
+
+@router.post(
+    "/workitems/{workitem_uid}/subscribers/{aet}",
+    status_code=501,
+    summary="Subscribe to workitem (UPS-RS) - NOT IMPLEMENTED",
+)
+async def subscribe_to_workitem(workitem_uid: str, aet: str):
+    """Subscribe to workitem events - NOT IMPLEMENTED."""
+    raise HTTPException(
+        status_code=501,
+        detail="Subscriptions not implemented in this emulator"
+    )
+
+
+@router.delete(
+    "/workitems/{workitem_uid}/subscribers/{aet}",
+    status_code=501,
+    summary="Unsubscribe from workitem (UPS-RS) - NOT IMPLEMENTED",
+)
+async def unsubscribe_from_workitem(workitem_uid: str, aet: str):
+    """Unsubscribe from workitem events - NOT IMPLEMENTED."""
+    raise HTTPException(
+        status_code=501,
+        detail="Subscriptions not implemented in this emulator"
+    )
