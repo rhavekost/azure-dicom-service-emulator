@@ -172,10 +172,44 @@ curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instanc
           2.raw
 ```
 
+## Features
+
+### QIDO-RS Advanced Search
+
+- ✅ **Fuzzy Matching** - Prefix word search on person names (PatientName, ReferringPhysicianName)
+- ✅ **Wildcard Matching** - `*` (zero or more chars) and `?` (single char) support
+- ✅ **UID List Queries** - Comma or backslash-separated UID lists
+- ✅ **Extended Query Tag Search** - Search on custom tags
+
+### Advanced Search Examples
+
+**Fuzzy name search:**
+```bash
+curl "http://localhost:8080/v2/studies?PatientName=joh&fuzzymatching=true"
+# Matches "John^Doe", "Johnson^Mary", etc.
+```
+
+**Wildcard search:**
+```bash
+curl "http://localhost:8080/v2/studies?PatientID=PAT*"
+# Matches PAT123, PATIENT, PAT_001, etc.
+
+curl "http://localhost:8080/v2/studies?StudyDescription=CT?Head"
+# Matches "CT-Head", "CT_Head", "CT1Head", etc.
+```
+
+**UID list search:**
+```bash
+curl "http://localhost:8080/v2/studies?StudyInstanceUID=1.2.3,4.5.6,7.8.9"
+# Returns studies matching any of the three UIDs
+```
+
 ## Roadmap
 
 - [x] WADO-RS frames and rendered endpoints
-- [ ] Fuzzy matching for PatientName in QIDO-RS
+- [x] Fuzzy matching for PatientName in QIDO-RS
+- [x] Wildcard matching for QIDO-RS
+- [x] UID list queries for QIDO-RS
 - [ ] Event Grid emulation (webhook notifications)
 - [ ] Auth mock (accept any bearer token)
 - [ ] Bulk Update API

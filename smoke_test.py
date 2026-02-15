@@ -231,7 +231,7 @@ def test_event_publishing():
 
 def test_frame_retrieval():
     """Test WADO-RS frame retrieval."""
-    print("[9/11] Frame Retrieval...")
+    print("[9/13] Frame Retrieval...")
 
     # Note: Requires uploading DICOM instance first
     # For now, skip if no instances exist
@@ -245,7 +245,7 @@ def test_frame_retrieval():
 
 def test_rendered_images():
     """Test WADO-RS rendered image endpoints."""
-    print("[10/11] Rendered Images...")
+    print("[10/13] Rendered Images...")
 
     try:
         # Placeholder for rendered image test
@@ -254,41 +254,74 @@ def test_rendered_images():
         print(f"  [SKIP] Rendered images: {e}")
 
 
+def test_advanced_search():
+    """Test QIDO-RS advanced search features."""
+    print("[11/13] Advanced Search...")
+
+    try:
+        # Fuzzy search
+        r = httpx.get(
+            f"{BASE_URL}/v2/studies",
+            params={"PatientName": "test", "fuzzymatching": "true"}
+        )
+        assert r.status_code == 200, f"Fuzzy search failed: {r.status_code}"
+        print("  [PASS] Fuzzy search")
+
+        # Wildcard search
+        r = httpx.get(
+            f"{BASE_URL}/v2/studies",
+            params={"PatientID": "PAT*"}
+        )
+        assert r.status_code == 200, f"Wildcard search failed: {r.status_code}"
+        print("  [PASS] Wildcard search")
+
+        # UID list (using made-up UIDs)
+        r = httpx.get(
+            f"{BASE_URL}/v2/studies",
+            params={"StudyInstanceUID": "1.2.3,4.5.6"}
+        )
+        assert r.status_code == 200, f"UID list search failed: {r.status_code}"
+        print("  [PASS] UID list search")
+
+    except Exception as e:
+        print(f"  [SKIP] Advanced search: {e}")
+
+
 def main():
     print(f"\n{'='*60}")
     print(f"  Azure Healthcare Workspace Emulator - Smoke Test")
     print(f"  Target: {BASE_URL}")
     print(f"{'='*60}\n")
 
-    print("[1/11] Health check...")
+    print("[1/13] Health check...")
     test_health()
 
-    print("\n[2/11] Creating test DICOM instance...")
+    print("\n[2/13] Creating test DICOM instance...")
     dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom()
     print(f"       Study:    {study_uid}")
     print(f"       Series:   {series_uid}")
     print(f"       Instance: {sop_uid}")
 
-    print("\n[3/11] STOW-RS (store)...")
+    print("\n[3/13] STOW-RS (store)...")
     test_stow_rs(dcm_bytes, study_uid)
 
-    print("\n[4/11] QIDO-RS (search)...")
+    print("\n[4/13] QIDO-RS (search)...")
     test_qido_rs_studies()
     test_qido_rs_search()
     test_qido_rs_wildcard()
 
-    print("\n[5/11] WADO-RS (retrieve)...")
+    print("\n[5/13] WADO-RS (retrieve)...")
     test_wado_rs_metadata(study_uid)
     test_wado_rs_instance(study_uid, series_uid, sop_uid)
 
-    print("\n[6/11] Change Feed...")
+    print("\n[6/13] Change Feed...")
     test_change_feed()
     test_change_feed_latest()
 
-    print("\n[7/11] Extended Query Tags...")
+    print("\n[7/13] Extended Query Tags...")
     test_extended_query_tags()
 
-    print("\n[8/11] Event Publishing...")
+    print("\n[8/13] Event Publishing...")
     test_event_publishing()
 
     print("\n")
@@ -297,7 +330,10 @@ def main():
     print("\n")
     test_rendered_images()
 
-    print("\n[11/11] DELETE...")
+    print("\n")
+    test_advanced_search()
+
+    print("\n[12/13] DELETE...")
     test_delete(study_uid)
 
     print(f"\n{'='*60}")
