@@ -125,3 +125,41 @@ async def create_workitem(
         status_code=201,
         headers={"Location": f"/v2/workitems/{workitem_uid}"}
     )
+
+
+@router.get(
+    "/workitems/{workitem_uid}",
+    summary="Retrieve workitem (UPS-RS)",
+)
+async def retrieve_workitem(
+    workitem_uid: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Retrieve UPS workitem.
+
+    Returns workitem DICOM dataset.
+    Transaction UID is NEVER included in response (security).
+
+    Returns:
+    - 200 OK with DICOM JSON
+    - 404 Not Found if workitem doesn't exist
+    """
+    result = await db.execute(
+        select(Workitem).where(Workitem.sop_instance_uid == workitem_uid)
+    )
+    workitem = result.scalar_one_or_none()
+
+    if not workitem:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workitem {workitem_uid} not found"
+        )
+
+    # Return DICOM dataset WITHOUT transaction UID
+    dataset = workitem.dicom_dataset.copy()
+
+    # Remove transaction UID (security)
+    dataset.pop("00081195", None)
+
+    return dataset
