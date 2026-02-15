@@ -31,7 +31,6 @@ from app.services.dicom_engine import (
     build_store_response,
 )
 from app.services.multipart import parse_multipart_related, build_multipart_response
-from main import get_event_manager
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +210,7 @@ async def stow_rs(
     # Publish DicomImageCreated events (best-effort, after commit)
     for instance in instances_to_publish:
         try:
+            from main import get_event_manager
             event_manager = get_event_manager()
             event = DicomEvent.from_instance_created(
                 study_uid=instance.study_instance_uid,
@@ -659,6 +659,7 @@ async def _delete_instances(
     # Publish DicomImageDeleted events (best-effort, after commit)
     for inst_data in deleted_instances_data:
         try:
+            from main import get_event_manager
             event_manager = get_event_manager()
             event = DicomEvent.from_instance_deleted(
                 study_uid=inst_data["study_uid"],
