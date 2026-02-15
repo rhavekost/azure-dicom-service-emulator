@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from app.database import Base, get_db
 from app.routers import dicomweb, changefeed, extended_query_tags, operations, debug, ups
+from tests.fixtures.factories import DicomFactory
 
 
 @pytest.fixture
@@ -53,9 +54,97 @@ def client(tmp_path):
     test_app.include_router(ups.router, prefix="/v2", tags=["UPS-RS"])
     test_app.include_router(debug.router, tags=["Debug"])
 
+    # Add health check endpoint
+    @test_app.get("/health", tags=["Health"])
+    async def health_check():
+        return {"status": "healthy", "service": "azure-healthcare-workspace-emulator"}
+
     # Override database dependency
     test_app.dependency_overrides[get_db] = override_get_db
 
     # Create test client
     with TestClient(test_app) as test_client:
         yield test_client
+
+
+# ── DICOM Fixture Helpers ──────────────────────────────────────
+
+
+@pytest.fixture
+def sample_ct_dicom():
+    """Returns CT DICOM bytes (minimal, no pixels)."""
+    return DicomFactory.create_ct_image(
+        patient_id="FIXTURE-CT-001",
+        patient_name="Fixture^CT",
+        with_pixel_data=False,
+    )
+
+
+@pytest.fixture
+def sample_ct_with_pixels():
+    """Returns CT DICOM bytes with pixel data."""
+    return DicomFactory.create_ct_image(
+        patient_id="FIXTURE-CT-002",
+        patient_name="Fixture^CTPixels",
+        with_pixel_data=True,
+    )
+
+
+@pytest.fixture
+def sample_mri_dicom():
+    """Returns MRI DICOM bytes."""
+    return DicomFactory.create_mri_image(
+        patient_id="FIXTURE-MRI-001",
+        patient_name="Fixture^MRI",
+        with_pixel_data=True,
+    )
+
+
+@pytest.fixture
+def sample_multiframe_dicom():
+    """Returns multiframe CT DICOM bytes."""
+    return DicomFactory.create_multiframe_ct(
+        patient_id="FIXTURE-MULTI-001",
+        num_frames=10,
+        with_pixel_data=True,
+    )
+
+
+@pytest.fixture
+def invalid_dicom_missing_sop():
+    """Returns invalid DICOM missing SOPInstanceUID."""
+    return DicomFactory.create_invalid_dicom(
+        missing_tags=["SOPInstanceUID"]
+    )
+
+
+@pytest.fixture
+def invalid_dicom_missing_study():
+    """Returns invalid DICOM missing StudyInstanceUID."""
+    return DicomFactory.create_invalid_dicom(
+        missing_tags=["StudyInstanceUID"]
+    )
+
+
+@pytest.fixture
+def fixtures_dir():
+    """Returns path to fixtures directory."""
+    return Path(__file__).parent / "fixtures" / "dicom"
+
+
+@pytest.fixture
+def valid_dicom_files(fixtures_dir):
+    """Returns list of paths to valid DICOM files."""
+    return list((fixtures_dir / "valid").glob("*.dcm"))
+
+
+@pytest.fixture
+def edge_case_dicom_files(fixtures_dir):
+    """Returns list of paths to edge case DICOM files."""
+    return list((fixtures_dir / "edge_cases").glob("*.dcm"))
+
+
+@pytest.fixture
+def invalid_dicom_files(fixtures_dir):
+    """Returns list of paths to invalid DICOM files."""
+    return list((fixtures_dir / "invalid").glob("*.dcm"))
