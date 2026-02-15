@@ -9,16 +9,25 @@ logger = logging.getLogger(__name__)
 
 
 class FrameCache:
-    """Manages frame extraction and caching."""
+    """
+    Manages frame extraction and caching.
 
-    def __init__(self, storage_dir: Path | str):
+    Note: Failure tracking is in-memory per-process. In multi-worker
+    FastAPI deployments, each worker process maintains its own failure cache.
+    Consider using shared storage (Redis, database) for production environments
+    requiring coordinated failure tracking across workers.
+    """
+
+    def __init__(self, storage_dir: Path | str, failure_ttl_seconds: int = 3600):
         """
         Initialize frame cache.
 
         Args:
             storage_dir: Root directory for DICOM storage
+            failure_ttl_seconds: How long to remember failed extractions (default: 1 hour)
         """
         self.storage_dir = Path(storage_dir)
+        self.failure_ttl_seconds = failure_ttl_seconds
         self._extraction_failures: dict[str, datetime] = {}
 
     def get_or_extract(
@@ -58,6 +67,12 @@ class FrameCache:
             raise FileNotFoundError(f"Instance not found: {instance_uid}")
 
         # Check if frames already extracted
+        # NOTE: There's a potential TOCTOU race here in multi-process deployments
+        # where multiple workers could attempt extraction simultaneously.
+        # This is acceptable because:
+        # 1. extract_frames creates frames_dir with exist_ok=True
+        # 2. Frame files are written atomically
+        # 3. Worst case: duplicate extraction work, not corruption
         if frames_dir.exists():
             cached_frames = sorted(frames_dir.glob("*.raw"))
             if cached_frames:
@@ -66,6 +81,8 @@ class FrameCache:
                     f"({len(cached_frames)} frames)"
                 )
                 return cached_frames
+            # Empty frames directory - likely from failed extraction.
+            # Fall through to attempt extraction again.
 
         # Extract frames
         try:
@@ -113,11 +130,20 @@ class FrameCache:
         self._extraction_failures[instance_uid] = datetime.now(timezone.utc)
 
     def _is_failed(self, instance_uid: str) -> bool:
-        """Check if instance failed extraction in last hour."""
+        """
+        Check if instance failed extraction recently.
+
+        Also cleans up expired failure entries to prevent memory leak.
+        """
         if instance_uid not in self._extraction_failures:
             return False
 
         failed_at = self._extraction_failures[instance_uid]
         age = datetime.now(timezone.utc) - failed_at
 
-        return age.total_seconds() < 3600
+        # Clean up expired entry
+        if age.total_seconds() >= self.failure_ttl_seconds:
+            del self._extraction_failures[instance_uid]
+            return False
+
+        return True
