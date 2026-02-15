@@ -355,8 +355,11 @@ async def retrieve_frames(
     - application/octet-stream (single frame only)
     - multipart/related; type="application/octet-stream" (multiple frames)
     """
-    # Parse frame numbers
-    frame_numbers = [int(f.strip()) for f in frames.split(",")]
+    # Parse frame numbers with validation
+    try:
+        frame_numbers = [int(f.strip()) for f in frames.split(",")]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid frame number format")
 
     # Verify instance exists in database
     result = await db.execute(
@@ -381,6 +384,8 @@ async def retrieve_frames(
                 content=frame_data,
                 media_type="application/octet-stream",
             )
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             if "out of range" in str(e):
                 raise HTTPException(status_code=404, detail=str(e))
@@ -396,27 +401,18 @@ async def retrieve_frames(
             for frame_num in frame_numbers:
                 frame_path = frame_cache.get_frame(study_uid, series_uid, instance_uid, frame_num)
                 frame_data = frame_path.read_bytes()
-                frame_parts.append(frame_data)
+                frame_parts.append(("application/octet-stream", frame_data))
 
-            # Build multipart response
-            boundary = "frame_boundary"
-            content_parts = []
-
-            for i, frame_data in enumerate(frame_parts):
-                content_parts.append(f"--{boundary}\r\n".encode())
-                content_parts.append(b"Content-Type: application/octet-stream\r\n")
-                content_parts.append(f"Content-Length: {len(frame_data)}\r\n\r\n".encode())
-                content_parts.append(frame_data)
-                content_parts.append(b"\r\n")
-
-            content_parts.append(f"--{boundary}--\r\n".encode())
-
-            multipart_content = b"".join(content_parts)
+            # Build multipart response using helper
+            boundary = f"boundary-{uuid.uuid4().hex[:16]}"
+            multipart_content = build_multipart_response(frame_parts, boundary)
 
             return Response(
                 content=multipart_content,
                 media_type=f'multipart/related; type="application/octet-stream"; boundary={boundary}',
             )
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             if "out of range" in str(e):
                 raise HTTPException(status_code=404, detail=str(e))
