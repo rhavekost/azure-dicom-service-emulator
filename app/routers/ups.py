@@ -359,3 +359,56 @@ async def change_workitem_state(
     await db.commit()
 
     return Response(status_code=200)
+
+
+@router.post(
+    "/workitems/{workitem_uid}/cancelrequest",
+    status_code=202,
+    summary="Request workitem cancellation (UPS-RS)",
+)
+async def request_cancellation(
+    workitem_uid: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Request cancellation of SCHEDULED workitem.
+
+    This endpoint allows canceling SCHEDULED workitems without transaction UID.
+    For IN PROGRESS workitems, use state change endpoint with transaction UID.
+
+    Returns:
+    - 202 Accepted on success
+    - 400 Bad Request if not SCHEDULED
+    - 404 Not Found if workitem doesn't exist
+    """
+    # Get workitem
+    result = await db.execute(
+        select(Workitem).where(Workitem.sop_instance_uid == workitem_uid)
+    )
+    workitem = result.scalar_one_or_none()
+
+    if not workitem:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Workitem {workitem_uid} not found"
+        )
+
+    # Validate workitem is SCHEDULED
+    if workitem.procedure_step_state != "SCHEDULED":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel workitem in {workitem.procedure_step_state} state. "
+                   "Use state change endpoint for IN PROGRESS workitems."
+        )
+
+    # Cancel workitem
+    workitem.procedure_step_state = "CANCELED"
+
+    # Update dataset
+    updated_dataset = workitem.dicom_dataset.copy()
+    updated_dataset["00741000"] = {"vr": "CS", "Value": ["CANCELED"]}
+    workitem.dicom_dataset = updated_dataset
+
+    await db.commit()
+
+    return Response(status_code=202)
