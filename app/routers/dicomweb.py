@@ -8,10 +8,11 @@ Implements:
 - DELETE: Remove studies/series/instances
 """
 
+import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -35,6 +36,7 @@ from app.services.dicom_engine import (
 from app.services.multipart import parse_multipart_related, build_multipart_response
 from app.services.frame_cache import FrameCache
 from app.services.image_rendering import render_frame as render_frame_to_image
+from app.services.upsert import upsert_instance
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +251,43 @@ async def stow_rs(
         content=_json_dumps(response_body),
         status_code=status_code,
         media_type="application/dicom+json",
+    )
+
+
+@router.put("/studies")
+@router.put("/studies/{study_instance_uid}")
+async def stow_rs_put(
+    request: Request,
+    study_instance_uid: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    STOW-RS with PUT (Upsert): Store or update DICOM instances with optional expiry.
+
+    Supports expiry headers for automatic study deletion:
+    - msdicom-expiry-time-milliseconds: Time until expiry in milliseconds
+    - msdicom-expiry-option: Must be "RelativeToNow"
+    - msdicom-expiry-level: Must be "Study"
+    """
+    # Parse expiry headers
+    expiry_ms = request.headers.get("msdicom-expiry-time-milliseconds")
+    expiry_option = request.headers.get("msdicom-expiry-option")
+    expiry_level = request.headers.get("msdicom-expiry-level")
+
+    expires_at = None
+    if expiry_ms and expiry_option == "RelativeToNow" and expiry_level == "Study":
+        expiry_seconds = int(expiry_ms) / 1000
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)
+
+    # Return placeholder response for now
+    # Full multipart parsing integration will come later
+    return Response(
+        content=json.dumps({
+            "status": "PUT endpoint created",
+            "study_instance_uid": study_instance_uid,
+            "expires_at": expires_at.isoformat() if expires_at else None
+        }),
+        media_type="application/json"
     )
 
 
