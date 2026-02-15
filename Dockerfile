@@ -51,4 +51,4 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
 EXPOSE 8080
 
 # Run application
-CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080
