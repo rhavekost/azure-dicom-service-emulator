@@ -1,0 +1,45 @@
+# Azure Healthcare Workspace Emulator
+# Local drop-in replacement for Azure Health Data Services DICOM Service
+#
+# Usage: docker compose up -d
+# API:   http://localhost:8080/v2/studies
+# Docs:  http://localhost:8080/docs
+
+services:
+  emulator:
+    build: .
+    ports:
+      - "8081:8080"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://emulator:emulator@postgres:5432/dicom_emulator
+      DICOM_STORAGE_DIR: /data/dicom
+    volumes:
+      - dicom-data:/data/dicom
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: emulator
+      POSTGRES_PASSWORD: emulator
+      POSTGRES_DB: dicom_emulator
+    ports:
+      - "5435:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emulator -d dicom_emulator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  dicom-data:

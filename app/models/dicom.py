@@ -66,7 +66,7 @@ class ChangeFeedEntry(Base):
     action = Column(String(16), nullable=False)  # create, update, delete
     state = Column(String(16), nullable=False, default="current")  # current, replaced, deleted
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    metadata = Column(JSON, default=dict)
+    dicom_metadata = Column(JSON, default=dict)
 
     __table_args__ = (
         Index("ix_changefeed_timestamp", "timestamp"),

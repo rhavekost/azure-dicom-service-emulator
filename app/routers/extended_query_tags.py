@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +50,7 @@ async def list_extended_query_tags(
     ]
 
 
-@router.post("/extendedquerytags")
+@router.post("/extendedquerytags", status_code=status.HTTP_202_ACCEPTED)
 async def add_extended_query_tags(
     request: ExtendedQueryTagsRequest,
     db: AsyncSession = Depends(get_db),
@@ -126,7 +126,7 @@ async def get_extended_query_tag(
     }
 
 
-@router.delete("/extendedquerytags/{path}")
+@router.delete("/extendedquerytags/{path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_extended_query_tag(
     path: str,
     db: AsyncSession = Depends(get_db),
@@ -142,4 +142,4 @@ async def delete_extended_query_tag(
     await db.delete(tag)
     await db.commit()
 
-    return {"status": "deleted"}
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

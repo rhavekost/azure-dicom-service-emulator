@@ -53,7 +53,7 @@ async def get_change_feed(
             "Action": entry.action,
             "Timestamp": entry.timestamp.isoformat(),
             "State": entry.state,
-            "Metadata": entry.metadata,
+            "Metadata": entry.dicom_metadata,
         }
         for entry in entries
     ]
@@ -79,5 +79,5 @@ async def get_latest_change_feed(
         "Action": entry.action,
         "Timestamp": entry.timestamp.isoformat(),
         "State": entry.state,
-        "Metadata": entry.metadata,
+        "Metadata": entry.dicom_metadata,
     }

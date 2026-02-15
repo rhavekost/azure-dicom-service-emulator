@@ -32,6 +32,7 @@ docker-compose.yml
 # Documentation
 docs/
 *.md
+!README.md
 
 # Tests
 tests/
