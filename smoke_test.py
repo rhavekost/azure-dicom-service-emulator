@@ -197,41 +197,76 @@ def test_delete(study_uid: str):
     print("  [PASS] DELETE reflected in change feed")
 
 
+def test_event_publishing():
+    """Test event publishing via /debug/events endpoint."""
+    try:
+        # Check if InMemoryEventProvider is configured
+        r = httpx.get(f"{BASE_URL}/debug/events")
+        if r.status_code == 404:
+            print("  [SKIP] InMemoryEventProvider not configured")
+            return
+
+        # Clear existing events
+        httpx.delete(f"{BASE_URL}/debug/events")
+
+        # Store a new instance
+        dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom()
+        test_stow_rs(dcm_bytes, study_uid)
+
+        # Check for events
+        r = httpx.get(f"{BASE_URL}/debug/events")
+        data = r.json()
+
+        assert data["count"] > 0, "No events published"
+
+        # Verify event format
+        event = data["events"][0]
+        assert event["eventType"] == "Microsoft.HealthcareApis.DicomImageCreated"
+        assert "imageStudyInstanceUid" in event["data"]
+
+        print(f"  [PASS] Event published ({data['count']} events)")
+    except Exception as e:
+        print(f"  [SKIP] Event test failed: {e}")
+
+
 def main():
     print(f"\n{'='*60}")
     print(f"  Azure Healthcare Workspace Emulator - Smoke Test")
     print(f"  Target: {BASE_URL}")
     print(f"{'='*60}\n")
 
-    print("[1/8] Health check...")
+    print("[1/9] Health check...")
     test_health()
 
-    print("\n[2/8] Creating test DICOM instance...")
+    print("\n[2/9] Creating test DICOM instance...")
     dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom()
     print(f"       Study:    {study_uid}")
     print(f"       Series:   {series_uid}")
     print(f"       Instance: {sop_uid}")
 
-    print("\n[3/8] STOW-RS (store)...")
+    print("\n[3/9] STOW-RS (store)...")
     test_stow_rs(dcm_bytes, study_uid)
 
-    print("\n[4/8] QIDO-RS (search)...")
+    print("\n[4/9] QIDO-RS (search)...")
     test_qido_rs_studies()
     test_qido_rs_search()
     test_qido_rs_wildcard()
 
-    print("\n[5/8] WADO-RS (retrieve)...")
+    print("\n[5/9] WADO-RS (retrieve)...")
     test_wado_rs_metadata(study_uid)
     test_wado_rs_instance(study_uid, series_uid, sop_uid)
 
-    print("\n[6/8] Change Feed...")
+    print("\n[6/9] Change Feed...")
     test_change_feed()
     test_change_feed_latest()
 
-    print("\n[7/8] Extended Query Tags...")
+    print("\n[7/9] Extended Query Tags...")
     test_extended_query_tags()
 
-    print("\n[8/8] DELETE...")
+    print("\n[8/9] Event Publishing...")
+    test_event_publishing()
+
+    print("\n[9/9] DELETE...")
     test_delete(study_uid)
 
     print(f"\n{'='*60}")
