@@ -11,6 +11,7 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
+from azure.storage.queue import QueueClient
 
 from app.models.events import DicomEvent
 
@@ -121,3 +122,29 @@ class WebhookEventProvider(EventProvider):
         """Publish batch of events via webhook (sends each separately)."""
         for event in events:
             await self._send_webhook(event)
+
+
+class AzureStorageQueueProvider(EventProvider):
+    """Azure Storage Queue event provider (Azurite compatible)."""
+
+    def __init__(self, connection_string: str, queue_name: str):
+        self.queue_client = QueueClient.from_connection_string(
+            connection_string, queue_name
+        )
+
+    async def publish(self, event: DicomEvent) -> None:
+        """Send event to Azure Storage Queue."""
+        import json
+        message = json.dumps(event.to_dict())
+        self.queue_client.send_message(message)
+
+    async def publish_batch(self, events: list[DicomEvent]) -> None:
+        """Send batch of events to Azure Storage Queue."""
+        import json
+        for event in events:
+            message = json.dumps(event.to_dict())
+            self.queue_client.send_message(message)
+
+    async def close(self) -> None:
+        """Close queue client connection."""
+        self.queue_client.close()
