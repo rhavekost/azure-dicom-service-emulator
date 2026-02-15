@@ -28,7 +28,7 @@ class EventProvider(ABC):
 class InMemoryEventProvider(EventProvider):
     """In-memory event provider for testing and debugging."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.events: list[DicomEvent] = []
 
     async def publish(self, event: DicomEvent) -> None:

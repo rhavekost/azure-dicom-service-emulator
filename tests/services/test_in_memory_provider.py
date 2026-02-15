@@ -59,3 +59,17 @@ async def test_in_memory_provider_clear():
     provider.clear()
 
     assert len(provider.events) == 0
+
+
+@pytest.mark.asyncio
+async def test_in_memory_provider_health_check():
+    """InMemoryProvider health check returns True."""
+    provider = InMemoryEventProvider()
+    assert await provider.health_check() is True
+
+
+@pytest.mark.asyncio
+async def test_in_memory_provider_close():
+    """InMemoryProvider close is safe to call."""
+    provider = InMemoryEventProvider()
+    await provider.close()  # Should not raise
