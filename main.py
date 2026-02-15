@@ -15,14 +15,39 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
 from app.routers import dicomweb, changefeed, extended_query_tags, operations
+from app.services.events import EventManager, load_providers_from_config
+
+
+# Global event manager instance
+event_manager: EventManager | None = None
+
+
+def get_event_manager() -> EventManager:
+    """Get the global event manager instance."""
+    global event_manager
+    if event_manager is None:
+        raise RuntimeError("Event manager not initialized")
+    return event_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create database tables on startup."""
+    """Create database tables and initialize event manager on startup."""
+    global event_manager
+
+    # Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Initialize event providers
+    providers = load_providers_from_config()
+    event_manager = EventManager(providers)
+
     yield
+
+    # Cleanup
+    if event_manager:
+        await event_manager.close()
 
 
 app = FastAPI(
