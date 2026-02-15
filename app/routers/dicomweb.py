@@ -56,6 +56,11 @@ QIDO_TAG_MAP = {
     "00080090": "referring_physician_name",
 }
 
+# ── DICOM Failure Reason Codes ─────────────────────────────────────
+# Used in STOW-RS FailedSOPSequence responses (tag 0x00081197)
+FAILURE_REASON_UNABLE_TO_PROCESS = 0xC000  # Processing failure
+FAILURE_REASON_UID_MISMATCH = 0xC409        # StudyInstanceUID mismatch
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  STOW-RS — Store Instances
@@ -95,7 +100,7 @@ async def stow_rs(
                 failures.append({
                     "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
                     "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
-                    "00081197": {"vr": "US", "Value": [0xC000]},  # Unable to Process
+                    "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
                 })
                 continue
 
@@ -108,7 +113,7 @@ async def stow_rs(
                 failures.append({
                     "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
                     "00081155": {"vr": "UI", "Value": [sop_uid]},
-                    "00081197": {"vr": "US", "Value": [0xC409]},  # Mismatch
+                    "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
                 })
                 continue
 

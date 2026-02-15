@@ -5,7 +5,9 @@ Uses pydicom to handle DICOM file parsing and converts to the DICOM JSON
 model (PS3.18 F.2) used by DICOMweb APIs.
 """
 
+import base64
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +17,31 @@ from pydicom.dataset import Dataset
 from pydicom.uid import ExplicitVRLittleEndian
 
 STORAGE_DIR = os.getenv("DICOM_STORAGE_DIR", "/data/dicom")
+
+# ── UID Validation (Security) ──────────────────────────────────────
+# DICOM UIDs must only contain digits and dots to prevent directory traversal
+_UID_PATTERN = re.compile(r'^[0-9.]+$')
+
+
+def _validate_uid(uid: str) -> bool:
+    """
+    Validate DICOM UID format to prevent directory traversal attacks.
+
+    Args:
+        uid: DICOM UID to validate
+
+    Returns:
+        True if UID is valid (only contains digits and dots)
+
+    Raises:
+        ValueError: If UID contains invalid characters
+    """
+    if not _UID_PATTERN.match(uid):
+        raise ValueError(
+            f"Invalid DICOM UID format: '{uid}'. "
+            f"UIDs must only contain digits and dots (0-9, .)"
+        )
+    return True
 
 
 # DICOM VR types that produce string values in JSON
@@ -89,8 +116,21 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
                 else:
                     entry["Value"] = [elem.value]
         elif elem.VR in ("OB", "OD", "OF", "OL", "OW", "UN"):
-            # Binary data — provide InlineBinary in real impl, skip for now
-            pass
+            # Binary data — encode as Base64 in InlineBinary field
+            if elem.value is not None:
+                try:
+                    # Get raw bytes from the element
+                    if isinstance(elem.value, bytes):
+                        raw_bytes = elem.value
+                    else:
+                        raw_bytes = elem.value.tobytes() if hasattr(elem.value, 'tobytes') else bytes(elem.value)
+
+                    # Encode as Base64
+                    encoded = base64.b64encode(raw_bytes).decode('ascii')
+                    entry["InlineBinary"] = encoded
+                except Exception:
+                    # If encoding fails, skip this element
+                    pass
         else:
             if elem.value is not None and str(elem.value).strip():
                 entry["Value"] = [str(elem.value)]
@@ -130,6 +170,11 @@ def store_instance(data: bytes, ds: Dataset) -> str:
     study_uid = str(ds.StudyInstanceUID)
     series_uid = str(ds.SeriesInstanceUID)
     sop_uid = str(ds.SOPInstanceUID)
+
+    # Validate UIDs to prevent directory traversal attacks
+    _validate_uid(study_uid)
+    _validate_uid(series_uid)
+    _validate_uid(sop_uid)
 
     study_dir = os.path.join(STORAGE_DIR, study_uid, series_uid)
     os.makedirs(study_dir, exist_ok=True)
