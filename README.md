@@ -12,7 +12,8 @@ Microsoft archived `microsoft/dicom-server` and there's no official local emulat
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v2/studies` | `POST` | STOW-RS — store instances |
+| `/v2/studies` | `POST` | STOW-RS — store instances (duplicate warning 45070) |
+| `/v2/studies` | `PUT` | STOW-RS — upsert instances (no duplicate warning) |
 | `/v2/studies/{study}` | `GET` | WADO-RS — retrieve study |
 | `/v2/studies/{study}/metadata` | `GET` | WADO-RS — study metadata |
 | `/v2/studies/{study}/series/{series}` | `GET` | WADO-RS — retrieve series |
@@ -74,6 +75,20 @@ docker compose -f docker-compose.with-orthanc.yml up -d
 pip install pydicom httpx
 python scripts/smoke_test.py http://localhost:8080
 ```
+
+### Expiry Headers Example
+
+**Upload with 24-hour expiry:**
+```bash
+curl -X PUT http://localhost:8080/v2/studies \
+  -H "Content-Type: multipart/related; type=application/dicom" \
+  -H "msdicom-expiry-time-milliseconds: 86400000" \
+  -H "msdicom-expiry-option: RelativeToNow" \
+  -H "msdicom-expiry-level: Study" \
+  -F "file=@instance.dcm"
+```
+
+Expired studies are automatically deleted every hour.
 
 ### Frame Retrieval Examples
 
