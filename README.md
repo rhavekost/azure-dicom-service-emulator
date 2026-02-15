@@ -38,6 +38,19 @@ Microsoft archived `microsoft/dicom-server` and there's no official local emulat
 | `/v2/extendedquerytags/{tag}` | `GET/PATCH/DELETE` | Manage individual tags |
 | `/v2/operations/{id}` | `GET` | Async operation status |
 
+### UPS-RS Worklist Service
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/v2/workitems` | `POST` | Create workitem (SCHEDULED state) |
+| `/v2/workitems/{workitem_uid}` | `GET` | Retrieve workitem |
+| `/v2/workitems/{workitem_uid}` | `PUT` | Update workitem attributes |
+| `/v2/workitems/{workitem_uid}/state` | `PUT` | Change workitem state (claim, complete, cancel) |
+| `/v2/workitems/{workitem_uid}/cancelrequest` | `POST` | Request cancellation (SCHEDULED only) |
+| `/v2/workitems` | `GET` | Search workitems by filters |
+| `/v2/workitems/{uid}/subscribers/{aet}` | `POST/DELETE` | Subscribe/unsubscribe (501 stub) |
+| `/v2/workitems/subscriptions` | `GET` | List subscriptions (501 stub) |
+
 ### Azure v2 Behaviors
 
 - Store only fails on missing required attributes (not searchable ones)
@@ -204,25 +217,94 @@ curl "http://localhost:8080/v2/studies?StudyInstanceUID=1.2.3,4.5.6,7.8.9"
 # Returns studies matching any of the three UIDs
 ```
 
+### UPS-RS Worklist Service
+
+Unified Procedure Step (UPS) for managing scheduled procedures and worklists.
+
+**Create a workitem:**
+```bash
+curl -X POST "http://localhost:8080/v2/workitems?1.2.3.workitem1" \
+  -H "Content-Type: application/dicom+json" \
+  -d '{
+    "00080018": {"vr": "UI", "Value": ["1.2.3.workitem1"]},
+    "00741000": {"vr": "CS", "Value": ["SCHEDULED"]},
+    "00100010": {"vr": "PN", "Value": [{"Alphabetic": "Doe^John"}]},
+    "00100020": {"vr": "LO", "Value": ["PAT001"]}
+  }'
+```
+
+**Search workitems:**
+```bash
+# By patient ID
+curl "http://localhost:8080/v2/workitems?PatientID=PAT001"
+
+# By state
+curl "http://localhost:8080/v2/workitems?ProcedureStepState=SCHEDULED"
+
+# With pagination
+curl "http://localhost:8080/v2/workitems?limit=10&offset=0"
+```
+
+**Claim a workitem (SCHEDULED → IN PROGRESS):**
+```bash
+curl -X PUT "http://localhost:8080/v2/workitems/1.2.3.workitem1/state" \
+  -H "Content-Type: application/dicom+json" \
+  -d '{
+    "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
+    "00081195": {"vr": "UI", "Value": ["1.2.3.txn123"]}
+  }'
+```
+
+**Update a workitem:**
+```bash
+curl -X PUT "http://localhost:8080/v2/workitems/1.2.3.workitem1" \
+  -H "Content-Type: application/dicom+json" \
+  -H "Transaction-UID: 1.2.3.txn123" \
+  -d '{
+    "00400100": {"vr": "SQ", "Value": [{"00400002": {"vr": "DA", "Value": ["20260215"]}}]}
+  }'
+```
+
+**Complete a workitem (IN PROGRESS → COMPLETED):**
+```bash
+curl -X PUT "http://localhost:8080/v2/workitems/1.2.3.workitem1/state" \
+  -H "Content-Type: application/dicom+json" \
+  -d '{
+    "00741000": {"vr": "CS", "Value": ["COMPLETED"]},
+    "00081195": {"vr": "UI", "Value": ["1.2.3.txn123"]}
+  }'
+```
+
+**Cancel a SCHEDULED workitem:**
+```bash
+curl -X POST "http://localhost:8080/v2/workitems/1.2.3.workitem1/cancelrequest"
+```
+
+**Key Features:**
+- ✅ **State Machine** - SCHEDULED → IN PROGRESS → COMPLETED/CANCELED
+- ✅ **Transaction UID Security** - Workitem ownership via transaction UIDs (never exposed in responses)
+- ✅ **Search & Filter** - By patient, state, scheduled time
+- ✅ **Atomic Updates** - Update attributes with transaction UID validation
+
 ## Roadmap
 
 - [x] WADO-RS frames and rendered endpoints
 - [x] Fuzzy matching for PatientName in QIDO-RS
 - [x] Wildcard matching for QIDO-RS
 - [x] UID list queries for QIDO-RS
+- [x] Worklist Service (UPS-RS) — full CRUD, state machine, search
 - [ ] Event Grid emulation (webhook notifications)
 - [ ] Auth mock (accept any bearer token)
 - [ ] Bulk Update API
-- [ ] Worklist Service (UPS-RS)
 - [ ] Integration test suite
 - [ ] Published Docker image on GHCR
 
 ## Not Emulated (Yet)
 
 - Bulk Import/Export
-- Worklist Service (UPS-RS) — lower priority
 - Data Partitioning
 - Azure RBAC / Managed Identity auth enforcement
+- UPS-RS subscriptions (endpoints return 501 Not Implemented)
 
 ## Related Projects
 
