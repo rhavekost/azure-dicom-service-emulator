@@ -8,6 +8,7 @@ Implements:
 - DELETE: Remove studies/series/instances
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.dicom import DicomInstance, ChangeFeedEntry
+from app.models.events import DicomEvent
 from app.services.dicom_engine import (
     parse_dicom,
     dataset_to_dicom_json,
@@ -29,6 +31,9 @@ from app.services.dicom_engine import (
     build_store_response,
 )
 from app.services.multipart import parse_multipart_related, build_multipart_response
+from main import get_event_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,6 +94,8 @@ async def stow_rs(
     failures = []
     effective_study_uid = study_instance_uid
     has_warnings = False
+    # Track instances for event publishing (after commit)
+    instances_to_publish = []
 
     for part in parts:
         try:
@@ -135,6 +142,7 @@ async def stow_rs(
             existing_instance = existing.scalar_one_or_none()
 
             action = "create"
+            stored_instance = None
             if existing_instance:
                 # Update existing — delete old file, update record
                 action = "update"
@@ -147,6 +155,7 @@ async def stow_rs(
                 ) if hasattr(ds, "file_meta") else None
                 for col, val in searchable.items():
                     setattr(existing_instance, col, val)
+                stored_instance = existing_instance
             else:
                 # Create new instance
                 instance = DicomInstance(
@@ -163,6 +172,7 @@ async def stow_rs(
                     **searchable,
                 )
                 db.add(instance)
+                stored_instance = instance
 
             # Add change feed entry
             feed_entry = ChangeFeedEntry(
@@ -186,6 +196,9 @@ async def stow_rs(
                 ]},
             })
 
+            # Track instance for event publishing
+            instances_to_publish.append(stored_instance)
+
         except Exception as e:
             failures.append({
                 "00081197": {"vr": "US", "Value": [0xC000]},
@@ -194,6 +207,22 @@ async def stow_rs(
             has_warnings = True
 
     await db.commit()
+
+    # Publish DicomImageCreated events (best-effort, after commit)
+    for instance in instances_to_publish:
+        try:
+            event_manager = get_event_manager()
+            event = DicomEvent.from_instance_created(
+                study_uid=instance.study_instance_uid,
+                series_uid=instance.series_instance_uid,
+                instance_uid=instance.sop_instance_uid,
+                sequence_number=instance.id,  # Use database ID as sequence
+                service_url=str(request.base_url).rstrip("/"),
+            )
+            await event_manager.publish(event)
+        except Exception as e:
+            # Log but don't fail the DICOM operation
+            logger.error(f"Failed to publish event for instance {instance.sop_instance_uid}: {e}")
 
     if not effective_study_uid:
         effective_study_uid = "unknown"
