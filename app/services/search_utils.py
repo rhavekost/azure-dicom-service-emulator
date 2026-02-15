@@ -1,13 +1,14 @@
 """Search utilities for QIDO-RS enhancements."""
 
 import logging
-from sqlalchemy import Column
-from sqlalchemy.sql.expression import or_, BooleanClauseList
+
+from sqlalchemy import Column, false
+from sqlalchemy.sql.expression import ColumnElement, or_
 
 logger = logging.getLogger(__name__)
 
 
-def build_fuzzy_name_filter(name_value: str, column: Column) -> BooleanClauseList:
+def build_fuzzy_name_filter(name_value: str, column: Column[str]) -> ColumnElement[bool]:
     """
     Build SQL filter for fuzzy person name matching.
 
@@ -27,6 +28,10 @@ def build_fuzzy_name_filter(name_value: str, column: Column) -> BooleanClauseLis
         OR clause combining all prefix matches
     """
     terms = name_value.lower().split()
+
+    # Guard clause for empty input
+    if not terms:
+        return false()
 
     conditions = []
     for term in terms:

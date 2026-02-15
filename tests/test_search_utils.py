@@ -1,13 +1,12 @@
 """Tests for search utilities for QIDO-RS enhancements."""
 
-import pytest
 from sqlalchemy import Column, String
-from sqlalchemy.sql.expression import BooleanClauseList
+from sqlalchemy.sql.expression import BooleanClauseList, ColumnElement
 
 from app.services.search_utils import (
     build_fuzzy_name_filter,
-    translate_wildcards,
     parse_uid_list,
+    translate_wildcards,
 )
 
 
@@ -56,6 +55,30 @@ def test_build_fuzzy_name_filter_multiple_words():
     # Should match "do" at start and after separator
     assert "do%" in sql_str.lower()
     assert "%^do%" in sql_str.lower() or r"%\^do%" in sql_str.lower()
+
+
+def test_build_fuzzy_name_filter_empty_input():
+    """Test fuzzy name matching with empty input."""
+    # Create a mock column
+    column = Column("patient_name", String)
+
+    # Test empty string
+    result = build_fuzzy_name_filter("", column)
+
+    # Verify result is a ColumnElement
+    assert isinstance(result, ColumnElement)
+
+    # Convert to string to verify SQL logic
+    sql_str = str(result.compile(compile_kwargs={"literal_binds": True}))
+
+    # Should return false() for empty input
+    assert "false" in sql_str.lower() or "0" in sql_str
+
+    # Test whitespace-only string
+    result = build_fuzzy_name_filter("   ", column)
+    assert isinstance(result, ColumnElement)
+    sql_str = str(result.compile(compile_kwargs={"literal_binds": True}))
+    assert "false" in sql_str.lower() or "0" in sql_str
 
 
 def test_translate_wildcards():
