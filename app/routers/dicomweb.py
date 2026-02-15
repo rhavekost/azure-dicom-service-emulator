@@ -37,7 +37,7 @@ from app.services.multipart import parse_multipart_related, build_multipart_resp
 from app.services.frame_cache import FrameCache
 from app.services.image_rendering import render_frame as render_frame_to_image
 from app.services.upsert import upsert_instance
-from app.services.search_utils import build_fuzzy_name_filter
+from app.services.search_utils import build_fuzzy_name_filter, translate_wildcards
 
 logger = logging.getLogger(__name__)
 
@@ -948,7 +948,13 @@ def _json_dumps(obj) -> bytes:
 
 
 def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
-    """Convert QIDO-RS query parameters to SQLAlchemy filter conditions."""
+    """Convert QIDO-RS query parameters to SQLAlchemy filter conditions.
+
+    Supports:
+    - Wildcard matching: * (zero or more chars), ? (exactly one char)
+    - Fuzzy matching: prefix word matching for person names (when fuzzymatching=true)
+    - Exact matching: when no wildcards and fuzzymatching=false
+    """
     filters = []
     for key, value in params.items():
         if key in ("limit", "offset", "fuzzymatching", "includefield"):
@@ -958,14 +964,16 @@ def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
         if db_column:
             column = getattr(DicomInstance, db_column, None)
             if column is not None:
-                if "*" in value:
-                    # Wildcard matching
-                    pattern = value.replace("*", "%")
-                    filters.append(column.ilike(pattern))
+                # Wildcard matching takes precedence
+                if "*" in value or "?" in value:
+                    # Translate DICOM wildcards to SQL LIKE pattern
+                    pattern = translate_wildcards(value)
+                    filters.append(column.like(pattern))
                 elif fuzzymatching and db_column in ("patient_name", "referring_physician_name"):
                     # Use prefix word matching for person names
                     filters.append(build_fuzzy_name_filter(value, column))
                 else:
+                    # Exact match
                     filters.append(column == value)
 
     return filters
