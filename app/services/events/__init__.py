@@ -1,5 +1,6 @@
 """Event publishing services."""
 
+from app.services.events.manager import EventManager
 from app.services.events.providers import (
     AzureStorageQueueProvider,
     EventProvider,
@@ -10,6 +11,7 @@ from app.services.events.providers import (
 
 __all__ = [
     "AzureStorageQueueProvider",
+    "EventManager",
     "EventProvider",
     "FileEventProvider",
     "InMemoryEventProvider",
