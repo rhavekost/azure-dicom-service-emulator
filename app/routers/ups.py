@@ -294,9 +294,8 @@ async def change_workitem_state(
 
     Returns:
     - 200 OK on success
-    - 400 Bad Request if invalid transition
+    - 400 Bad Request if invalid transition or transaction UID mismatch
     - 404 Not Found if workitem doesn't exist
-    - 409 Conflict if transaction UID doesn't match
     """
     payload = await request.json()
 
