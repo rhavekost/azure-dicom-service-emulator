@@ -8,8 +8,29 @@ from sqlalchemy import (
     BigInteger, Index, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+
+
+class DicomStudy(Base):
+    """DICOM Study metadata with expiry support."""
+
+    __tablename__ = "studies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    study_instance_uid = Column(String(128), nullable=False, unique=True, index=True)
+
+    # Expiry support (Phase 3)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
 
 
 class DicomInstance(Base):
