@@ -39,6 +39,18 @@ env/
 .DS_Store
 Thumbs.db
 
+# Database
+*.db
+*.sqlite
+
+# Cache
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Docker volumes
+.worktrees/
+
 # Project specific
 /data/
 *.log
