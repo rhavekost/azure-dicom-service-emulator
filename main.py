@@ -8,14 +8,23 @@ but for Healthcare DICOM Service.
 MIT License - KostLabs
 """
 
+import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import engine, Base
+from app.database import engine, Base, AsyncSessionLocal
 from app.routers import dicomweb, changefeed, extended_query_tags, operations, debug
 from app.services.events import EventManager, load_providers_from_config
+from app.services.expiry import delete_expired_studies
+
+
+logger = logging.getLogger(__name__)
+DICOM_STORAGE_DIR = Path(os.getenv("DICOM_STORAGE_DIR", "/data/dicom"))
 
 
 # Global event manager instance
@@ -28,6 +37,19 @@ def get_event_manager() -> EventManager:
     if event_manager is None:
         raise RuntimeError("Event manager not initialized")
     return event_manager
+
+
+async def expiry_cleanup_task():
+    """Background task that runs every hour to delete expired studies."""
+    while True:
+        try:
+            await asyncio.sleep(3600)  # 1 hour
+            async with AsyncSessionLocal() as db:
+                deleted_count = await delete_expired_studies(db, DICOM_STORAGE_DIR)
+                if deleted_count > 0:
+                    logger.info(f"Expiry cleanup: deleted {deleted_count} studies")
+        except Exception as e:
+            logger.error(f"Expiry cleanup task error: {e}")
 
 
 @asynccontextmanager
@@ -43,9 +65,18 @@ async def lifespan(app: FastAPI):
     providers = load_providers_from_config()
     event_manager = EventManager(providers)
 
+    # Start background expiry cleanup task
+    expiry_task = asyncio.create_task(expiry_cleanup_task())
+
     yield
 
     # Cleanup
+    expiry_task.cancel()
+    try:
+        await expiry_task
+    except asyncio.CancelledError:
+        pass
+
     if event_manager:
         await event_manager.close()
 
