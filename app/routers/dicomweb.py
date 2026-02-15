@@ -37,7 +37,7 @@ from app.services.multipart import parse_multipart_related, build_multipart_resp
 from app.services.frame_cache import FrameCache
 from app.services.image_rendering import render_frame as render_frame_to_image
 from app.services.upsert import upsert_instance
-from app.services.search_utils import build_fuzzy_name_filter, translate_wildcards
+from app.services.search_utils import build_fuzzy_name_filter, translate_wildcards, parse_uid_list
 
 logger = logging.getLogger(__name__)
 
@@ -826,12 +826,30 @@ async def qido_rs_series(
     request: Request,
     limit: int = Query(100, alias="limit"),
     offset: int = Query(0, alias="offset"),
+    SeriesInstanceUID: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    """QIDO-RS: Search for series within a study."""
-    query = select(DicomInstance).where(
-        DicomInstance.study_instance_uid == study_uid
-    ).offset(offset).limit(limit)
+    """QIDO-RS: Search for series within a study.
+
+    Query parameters:
+    - SeriesInstanceUID: Series UID (supports comma or backslash separated list)
+    - limit: Maximum number of results (default: 100)
+    - offset: Offset for pagination (default: 0)
+    """
+    # Start with study filter
+    conditions = [DicomInstance.study_instance_uid == study_uid]
+
+    # Add SeriesInstanceUID filter with list support
+    if SeriesInstanceUID:
+        if "," in SeriesInstanceUID or "\\" in SeriesInstanceUID:
+            # UID list search
+            uids = parse_uid_list(SeriesInstanceUID)
+            conditions.append(DicomInstance.series_instance_uid.in_(uids))
+        else:
+            # Single UID - exact match
+            conditions.append(DicomInstance.series_instance_uid == SeriesInstanceUID)
+
+    query = select(DicomInstance).where(and_(*conditions)).offset(offset).limit(limit)
 
     result = await db.execute(query)
     instances = result.scalars().all()
@@ -868,15 +886,33 @@ async def qido_rs_instances(
     request: Request,
     limit: int = Query(100, alias="limit"),
     offset: int = Query(0, alias="offset"),
+    SOPInstanceUID: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    """QIDO-RS: Search for instances within a series."""
-    query = select(DicomInstance).where(
-        and_(
-            DicomInstance.study_instance_uid == study_uid,
-            DicomInstance.series_instance_uid == series_uid,
-        )
-    ).offset(offset).limit(limit)
+    """QIDO-RS: Search for instances within a series.
+
+    Query parameters:
+    - SOPInstanceUID: SOP Instance UID (supports comma or backslash separated list)
+    - limit: Maximum number of results (default: 100)
+    - offset: Offset for pagination (default: 0)
+    """
+    # Start with study and series filters
+    conditions = [
+        DicomInstance.study_instance_uid == study_uid,
+        DicomInstance.series_instance_uid == series_uid,
+    ]
+
+    # Add SOPInstanceUID filter with list support
+    if SOPInstanceUID:
+        if "," in SOPInstanceUID or "\\" in SOPInstanceUID:
+            # UID list search
+            uids = parse_uid_list(SOPInstanceUID)
+            conditions.append(DicomInstance.sop_instance_uid.in_(uids))
+        else:
+            # Single UID - exact match
+            conditions.append(DicomInstance.sop_instance_uid == SOPInstanceUID)
+
+    query = select(DicomInstance).where(and_(*conditions)).offset(offset).limit(limit)
 
     result = await db.execute(query)
     instances = result.scalars().all()
@@ -951,6 +987,7 @@ def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
     """Convert QIDO-RS query parameters to SQLAlchemy filter conditions.
 
     Supports:
+    - UID list matching: comma or backslash separated UIDs (for StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID)
     - Wildcard matching: * (zero or more chars), ? (exactly one char)
     - Fuzzy matching: prefix word matching for person names (when fuzzymatching=true)
     - Exact matching: when no wildcards and fuzzymatching=false
@@ -964,8 +1001,17 @@ def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
         if db_column:
             column = getattr(DicomInstance, db_column, None)
             if column is not None:
-                # Wildcard matching takes precedence
-                if "*" in value or "?" in value:
+                # UID list matching takes precedence (for UID fields only)
+                if db_column in ("study_instance_uid", "series_instance_uid", "sop_instance_uid"):
+                    if "," in value or "\\" in value:
+                        # UID list search
+                        uids = parse_uid_list(value)
+                        filters.append(column.in_(uids))
+                    else:
+                        # Single UID - exact match
+                        filters.append(column == value)
+                # Wildcard matching takes precedence (for non-UID fields)
+                elif "*" in value or "?" in value:
                     # Translate DICOM wildcards to SQL LIKE pattern
                     pattern = translate_wildcards(value)
                     filters.append(column.like(pattern))
