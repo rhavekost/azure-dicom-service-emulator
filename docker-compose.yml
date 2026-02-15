@@ -13,10 +13,22 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://emulator:emulator@postgres:5432/dicom_emulator
       DICOM_STORAGE_DIR: /data/dicom
+      # EVENT_PROVIDERS configuration will be used once event system is implemented
+      # EVENT_PROVIDERS: |
+      #   [
+      #     {
+      #       "type": "azure_storage_queue",
+      #       "connection_string": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;",
+      #       "queue_name": "dicom-events",
+      #       "enabled": true
+      #     }
+      #   ]
     volumes:
       - dicom-data:/data/dicom
     depends_on:
       postgres:
+        condition: service_healthy
+      azurite:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -39,6 +51,20 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    ports:
+      - "10000:10000"  # Blob
+      - "10001:10001"  # Queue
+      - "10002:10002"  # Table
+    command: ["azurite-queue", "--queueHost", "0.0.0.0", "--queuePort", "10001"]
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -tln | grep -q ':10001' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
 
 volumes:
   pgdata:
