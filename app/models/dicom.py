@@ -7,7 +7,7 @@ from sqlalchemy import (
     Column, String, Integer, DateTime, Text, JSON, Boolean,
     BigInteger, Index, UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSON as PGJSON
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -143,3 +143,93 @@ class Operation(Base):
                         onupdate=lambda: datetime.now(timezone.utc))
     results = Column(JSON, default=dict)
     errors = Column(JSON, default=list)
+
+
+class Workitem(Base):
+    """UPS Workitem — Unified Procedure Step for worklist management."""
+
+    __tablename__ = "workitems"
+
+    # Primary identifier
+    sop_instance_uid: Mapped[str] = mapped_column(
+        String(64),
+        primary_key=True
+    )
+
+    # Ownership and state
+    transaction_uid: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+    procedure_step_state: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="SCHEDULED",
+        index=True
+    )
+
+    # Patient information (for search)
+    patient_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True
+    )
+    patient_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True
+    )
+
+    # Study reference
+    study_instance_uid: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True
+    )
+
+    # Scheduling
+    scheduled_procedure_step_start_datetime: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True
+    )
+
+    # Request references (for search)
+    accession_number: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+    requested_procedure_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+
+    # Station codes (for search)
+    scheduled_station_name_code: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+    scheduled_station_class_code: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+    scheduled_station_geo_code: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True
+    )
+
+    # Full DICOM dataset (JSON)
+    dicom_dataset: Mapped[dict] = mapped_column(
+        PGJSON,
+        nullable=False
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
