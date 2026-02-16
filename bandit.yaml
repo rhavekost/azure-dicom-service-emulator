@@ -1,0 +1,116 @@
+# Bandit Security Scanner Configuration
+# Full scan with medium-low severity threshold
+# See: https://bandit.readthedocs.io/
+
+# Exclude patterns
+exclude_dirs:
+  - /venv/
+  - /tests/
+  - /.venv/
+  - /node_modules/
+  - /.tox/
+  - /build/
+  - /dist/
+
+# Tests to skip (if any)
+# Example: B101 (assert_used) is common in tests
+skips:
+  # B101: assert_used - we use asserts in application code sparingly
+  # B601: paramiko_calls - not using paramiko
+  # B602: subprocess_popen_with_shell_equals_true - we'll review these carefully
+
+# Tests to run (leave empty to run all non-skipped tests)
+tests:
+
+# Plugin configuration
+plugins:
+  # Built-in plugins are enabled by default
+
+# Severity level: LOW, MEDIUM, HIGH
+# Confidence level: LOW, MEDIUM, HIGH
+# Only report issues with severity >= MEDIUM and confidence >= LOW
+severity: MEDIUM
+confidence: LOW
+
+# Output format options: csv, json, txt, yaml, screen
+# format: screen
+
+# Aggregate output (group by test ID)
+aggregate: vuln
+
+# Number of lines of context to show
+# context_lines: 3
+
+# Maximum number of issues to report (0 = unlimited)
+# max_issues: 0
+
+# Specific test configurations
+# B201: flask_debug_true
+# B501: request_with_no_cert_validation
+# B502: ssl_with_bad_version
+# B503: ssl_with_bad_defaults
+# B504: ssl_with_no_version
+# B505: weak_cryptographic_key
+# B506: yaml_load (should use yaml.safe_load)
+# B507: ssh_no_host_key_verification
+# B601-B609: injection risks
+# B701-B703: jinja2 autoescape
+
+# Custom baseline file (optional - create after first run)
+# baseline: bandit-baseline.json
+
+# Blacklist/allowlist of paths (regex patterns)
+# exclude: /test/,/build/
+# include: /app/
+
+# Markdown report (optional)
+# markdown: true
+
+# Output file (optional - default is stdout)
+# output: bandit-report.txt
+
+# Verbose output
+# verbose: true
+
+# Debug mode
+# debug: false
+
+# Ini file (alternative to YAML)
+# ini_path: .bandit
+
+# Profile (optional - predefined test sets)
+# profile: ShellInjection
+
+# --------------------------------------------------
+# CUSTOM CONFIGURATION FOR THIS PROJECT
+# --------------------------------------------------
+
+# We focus on:
+# 1. SQL Injection (B608)
+# 2. Hardcoded credentials (B105, B106, B107)
+# 3. Insecure deserialization (B301-B303)
+# 4. Debug mode in production (B201)
+# 5. Weak crypto (B501-B507)
+# 6. Command injection (B602-B609)
+# 7. Path traversal (B108)
+# 8. YAML unsafe load (B506)
+# 9. XML vulnerabilities (B405, B406, B410, B411, B320, B314, B315, B316, B317)
+# 10. Pickle usage (B301, B302, B303, B403, B404)
+
+# Recommended workflow:
+# 1. Initial scan: bandit -r app/ -c bandit.yaml -ll -f screen
+# 2. Create baseline: bandit -r app/ -c bandit.yaml -ll -f json -o bandit-baseline.json
+# 3. Future scans: bandit -r app/ -c bandit.yaml -ll -b bandit-baseline.json
+# 4. Review new issues and update baseline as needed
+
+# For CI/CD:
+# - Run on every PR
+# - Fail build on HIGH severity issues
+# - Warn on MEDIUM severity issues
+# - Generate JSON report for tracking
+
+# Example commands:
+# bandit -r app/ -c bandit.yaml -ll                    # Screen output, MEDIUM+
+# bandit -r app/ -c bandit.yaml -lll                   # HIGH only
+# bandit -r app/ -c bandit.yaml -f json -o report.json # JSON output
+# bandit -r app/ -c bandit.yaml -f csv -o report.csv   # CSV output
