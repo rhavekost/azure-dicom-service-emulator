@@ -1,0 +1,301 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- /Users/rhavekost/Projects/rhavekost/azure-dicom-service-emulator/venv/bin/python3.14
+cachedir: .pytest_cache
+benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+metadata: {'Python': '3.14.2', 'Platform': 'macOS-26.2-arm64-arm-64bit-Mach-O', 'Packages': {'pytest': '9.0.2', 'pluggy': '1.6.0'}, 'Plugins': {'anyio': '4.12.1', 'benchmark': '5.2.3', 'locust': '2.43.3', 'xdist': '3.8.0', 'metadata': '3.1.1', 'html': '4.2.0', 'Faker': '40.4.0', 'asyncio': '1.3.0', 'cov': '7.0.0'}}
+rootdir: /Users/rhavekost/Projects/rhavekost/azure-dicom-service-emulator
+configfile: pyproject.toml
+plugins: anyio-4.12.1, benchmark-5.2.3, locust-2.43.3, xdist-3.8.0, metadata-3.1.1, html-4.2.0, Faker-40.4.0, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+collecting ... collected 225 items
+
+tests/models/test_events.py::test_dicom_event_creation PASSED            [  0%]
+tests/models/test_events.py::test_dicom_event_to_dict PASSED             [  0%]
+tests/models/test_events.py::test_dicom_event_from_instance PASSED       [  1%]
+tests/models/test_events.py::test_dicom_event_from_instance_deleted PASSED [  1%]
+tests/services/test_azure_queue_provider.py::test_azure_queue_provider_publish PASSED [  2%]
+tests/services/test_azure_queue_provider.py::test_azure_queue_provider_publish_batch PASSED [  2%]
+tests/services/test_azure_queue_provider.py::test_azure_queue_provider_close PASSED [  3%]
+tests/services/test_event_config.py::test_load_providers_from_json_env PASSED [  3%]
+tests/services/test_event_config.py::test_skip_disabled_providers PASSED [  4%]
+tests/services/test_event_config.py::test_load_webhook_provider_with_config PASSED [  4%]
+tests/services/test_event_config.py::test_load_azure_queue_provider PASSED [  4%]
+tests/services/test_event_config.py::test_empty_config_returns_empty_list PASSED [  5%]
+tests/services/test_event_config.py::test_invalid_provider_type_skipped_with_warning PASSED [  5%]
+tests/services/test_event_manager.py::test_event_manager_publishes_to_all_providers PASSED [  6%]
+tests/services/test_event_manager.py::test_event_manager_continues_on_provider_failure PASSED [  6%]
+tests/services/test_event_manager.py::test_event_manager_timeout PASSED  [  7%]
+tests/services/test_event_manager.py::test_event_manager_close_all_providers PASSED [  7%]
+tests/services/test_event_providers.py::test_event_provider_abstract PASSED [  8%]
+tests/services/test_event_providers.py::test_mock_provider_publish PASSED [  8%]
+tests/services/test_event_providers.py::test_mock_provider_publish_batch PASSED [  8%]
+tests/services/test_event_providers.py::test_provider_health_check_default PASSED [  9%]
+tests/services/test_event_providers.py::test_provider_close_default PASSED [  9%]
+tests/services/test_file_provider.py::test_file_provider_publish PASSED  [ 10%]
+tests/services/test_file_provider.py::test_file_provider_publish_multiple PASSED [ 10%]
+tests/services/test_file_provider.py::test_file_provider_publish_batch PASSED [ 11%]
+tests/services/test_file_provider.py::test_file_provider_creates_directory PASSED [ 11%]
+tests/services/test_in_memory_provider.py::test_in_memory_provider_publish PASSED [ 12%]
+tests/services/test_in_memory_provider.py::test_in_memory_provider_publish_batch PASSED [ 12%]
+tests/services/test_in_memory_provider.py::test_in_memory_provider_get_events PASSED [ 12%]
+tests/services/test_in_memory_provider.py::test_in_memory_provider_clear PASSED [ 13%]
+tests/services/test_in_memory_provider.py::test_in_memory_provider_health_check PASSED [ 13%]
+tests/services/test_in_memory_provider.py::test_in_memory_provider_close PASSED [ 14%]
+tests/services/test_webhook_provider.py::test_webhook_provider_publish_success PASSED [ 14%]
+tests/services/test_webhook_provider.py::test_webhook_provider_publish_batch PASSED [ 15%]
+tests/services/test_webhook_provider.py::test_webhook_provider_retry_on_failure PASSED [ 15%]
+tests/services/test_webhook_provider.py::test_webhook_provider_gives_up_after_retries PASSED [ 16%]
+tests/test_expiry.py::test_get_expired_studies PASSED                    [ 16%]
+tests/test_expiry.py::test_delete_expired_studies PASSED                 [ 16%]
+tests/test_expiry.py::test_delete_study PASSED                           [ 17%]
+tests/test_expiry.py::test_delete_expired_studies_no_expired PASSED      [ 17%]
+tests/test_expiry.py::test_delete_study_missing_directory PASSED         [ 18%]
+tests/test_expiry_integration.py::test_expiry_workflow_end_to_end PASSED [ 18%]
+tests/test_expiry_schema.py::test_dicom_study_has_expires_at PASSED      [ 19%]
+tests/test_expiry_schema.py::test_dicom_study_expires_at_nullable PASSED [ 19%]
+tests/test_fixtures_work.py::test_sample_ct_dicom_fixture PASSED         [ 20%]
+tests/test_fixtures_work.py::test_valid_dicom_files_fixture PASSED       [ 20%]
+tests/test_fixtures_work.py::test_client_fixture PASSED                  [ 20%]
+tests/test_frame_cache.py::test_frame_cache_get_or_extract PASSED        [ 21%]
+tests/test_frame_cache.py::test_frame_cache_uses_cached_frames PASSED    [ 21%]
+tests/test_frame_cache.py::test_frame_cache_get_specific_frame PASSED    [ 22%]
+tests/test_frame_cache.py::test_frame_cache_frame_out_of_range PASSED    [ 22%]
+tests/test_frame_cache.py::test_frame_cache_failed_extraction PASSED     [ 23%]
+tests/test_frame_cache.py::test_frame_cache_retry_after_failure PASSED   [ 23%]
+tests/test_frame_cache.py::test_frame_cache_retry_after_ttl PASSED       [ 24%]
+tests/test_frame_cache.py::test_frame_cache_configurable_ttl PASSED      [ 24%]
+tests/test_frame_cache.py::test_frame_cache_memory_cleanup PASSED        [ 24%]
+tests/test_frame_extraction.py::test_extract_single_frame PASSED         [ 25%]
+tests/test_frame_extraction.py::test_extract_multi_frame PASSED          [ 25%]
+tests/test_frame_extraction.py::test_extract_frames_no_pixel_data PASSED [ 26%]
+tests/test_frame_extraction.py::test_extract_frames_invalid_file PASSED  [ 26%]
+tests/test_frame_extraction.py::test_extract_frames_missing_file PASSED  [ 27%]
+tests/test_image_rendering.py::test_render_frame_jpeg PASSED             [ 27%]
+tests/test_image_rendering.py::test_render_frame_png PASSED              [ 28%]
+tests/test_image_rendering.py::test_render_frame_with_windowing PASSED   [ 28%]
+tests/test_image_rendering.py::test_apply_windowing PASSED               [ 28%]
+tests/test_image_rendering.py::test_apply_windowing_multi_window PASSED  [ 29%]
+tests/test_image_rendering.py::test_normalize_to_uint8 PASSED            [ 29%]
+tests/test_image_rendering.py::test_normalize_to_uint8_constant PASSED   [ 30%]
+tests/test_image_rendering.py::test_render_frame_multi_frame PASSED      [ 30%]
+tests/test_image_rendering.py::test_render_frame_out_of_range PASSED     [ 31%]
+tests/test_image_rendering.py::test_render_frame_single_frame_invalid_number PASSED [ 31%]
+tests/test_image_rendering.py::test_render_frame_unsupported_format PASSED [ 32%]
+tests/test_image_rendering.py::test_render_frame_multi_window PASSED     [ 32%]
+tests/test_image_rendering.py::test_render_frame_rgb_dicom PASSED        [ 32%]
+tests/test_image_rendering.py::test_render_frame_invalid_quality PASSED  [ 33%]
+tests/test_image_rendering.py::test_render_frame_missing_file PASSED     [ 33%]
+tests/test_put_stow.py::test_put_creates_new_instance PASSED             [ 34%]
+tests/test_put_stow.py::test_put_replaces_existing_instance PASSED       [ 34%]
+tests/test_put_stow.py::test_put_with_expiry_creates_study PASSED        [ 35%]
+tests/test_put_stow.py::test_put_updates_existing_study_expiry PASSED    [ 35%]
+tests/test_put_stow.py::test_upsert_no_duplicate_instances PASSED        [ 36%]
+tests/test_qido_fuzzy.py::test_fuzzy_search_patient_name PASSED          [ 36%]
+tests/test_qido_fuzzy.py::test_fuzzy_search_multiple_words PASSED        [ 36%]
+tests/test_qido_fuzzy.py::test_fuzzy_search_family_name_only PASSED      [ 37%]
+tests/test_qido_fuzzy.py::test_exact_search_when_fuzzy_disabled PASSED   [ 37%]
+tests/test_qido_fuzzy_smoke.py::test_parse_qido_params_with_fuzzy_matching PASSED [ 38%]
+tests/test_qido_fuzzy_smoke.py::test_parse_qido_params_without_fuzzy_matching PASSED [ 38%]
+tests/test_qido_fuzzy_smoke.py::test_parse_qido_params_wildcard_takes_precedence PASSED [ 39%]
+tests/test_qido_fuzzy_smoke.py::test_parse_qido_params_multiple_word_fuzzy PASSED [ 39%]
+tests/test_qido_fuzzy_smoke.py::test_parse_qido_params_referring_physician_fuzzy PASSED [ 40%]
+tests/test_qido_uid_list.py::test_parse_uid_list_comma_separated PASSED  [ 40%]
+tests/test_qido_uid_list.py::test_parse_uid_list_backslash_separated PASSED [ 40%]
+tests/test_qido_uid_list.py::test_parse_uid_list_mixed_separators PASSED [ 41%]
+tests/test_qido_uid_list.py::test_parse_uid_list_with_whitespace PASSED  [ 41%]
+tests/test_qido_uid_list.py::test_parse_uid_list_single_uid PASSED       [ 42%]
+tests/test_qido_uid_list.py::test_parse_uid_list_empty_components PASSED [ 42%]
+tests/test_qido_uid_list.py::test_study_uid_list_comma_separated PASSED  [ 43%]
+tests/test_qido_uid_list.py::test_study_uid_list_backslash_separated PASSED [ 43%]
+tests/test_qido_uid_list.py::test_study_uid_single_exact_match PASSED    [ 44%]
+tests/test_qido_uid_list.py::test_series_uid_list_comma_separated PASSED [ 44%]
+tests/test_qido_uid_list.py::test_series_uid_list_backslash_separated PASSED [ 44%]
+tests/test_qido_uid_list.py::test_series_uid_single_exact_match PASSED   [ 45%]
+tests/test_qido_uid_list.py::test_sop_uid_list_comma_separated PASSED    [ 45%]
+tests/test_qido_uid_list.py::test_sop_uid_list_backslash_separated PASSED [ 46%]
+tests/test_qido_uid_list.py::test_sop_uid_single_exact_match PASSED      [ 46%]
+tests/test_qido_uid_list.py::test_uid_list_with_other_filters PASSED     [ 47%]
+tests/test_qido_uid_list.py::test_uid_list_does_not_break_wildcard_matching PASSED [ 47%]
+tests/test_qido_uid_list_integration.py::test_study_uid_list_filter_comma_separated PASSED [ 48%]
+tests/test_qido_uid_list_integration.py::test_study_uid_list_filter_backslash_separated PASSED [ 48%]
+tests/test_qido_uid_list_integration.py::test_study_uid_single_exact_match PASSED [ 48%]
+tests/test_qido_uid_list_integration.py::test_series_uid_list_filter_comma_separated PASSED [ 49%]
+tests/test_qido_uid_list_integration.py::test_sop_uid_list_filter_comma_separated PASSED [ 49%]
+tests/test_qido_wildcard.py::test_wildcard_search_asterisk_patient_id PASSED [ 50%]
+tests/test_qido_wildcard.py::test_wildcard_search_question_mark_patient_id PASSED [ 50%]
+tests/test_qido_wildcard.py::test_wildcard_search_mixed_patient_id PASSED [ 51%]
+tests/test_qido_wildcard.py::test_wildcard_does_not_affect_exact_match_patient_id PASSED [ 51%]
+tests/test_qido_wildcard.py::test_wildcard_search_asterisk_study_description PASSED [ 52%]
+tests/test_qido_wildcard.py::test_wildcard_search_question_mark_study_description PASSED [ 52%]
+tests/test_qido_wildcard.py::test_wildcard_does_not_affect_exact_match_study_description PASSED [ 52%]
+tests/test_qido_wildcard.py::test_wildcard_search_asterisk_accession_number PASSED [ 53%]
+tests/test_qido_wildcard.py::test_wildcard_search_question_mark_accession_number PASSED [ 53%]
+tests/test_qido_wildcard.py::test_wildcard_does_not_affect_exact_match_accession_number PASSED [ 54%]
+tests/test_qido_wildcard.py::test_wildcard_escapes_sql_wildcards PASSED  [ 54%]
+tests/test_qido_wildcard.py::test_wildcard_at_start PASSED               [ 55%]
+tests/test_qido_wildcard.py::test_wildcard_only_asterisk PASSED          [ 55%]
+tests/test_qido_wildcard_integration.py::test_qido_wildcard_patient_id_asterisk PASSED [ 56%]
+tests/test_qido_wildcard_integration.py::test_qido_wildcard_patient_id_question_mark PASSED [ 56%]
+tests/test_qido_wildcard_integration.py::test_qido_wildcard_study_description PASSED [ 56%]
+tests/test_qido_wildcard_integration.py::test_qido_wildcard_accession_number PASSED [ 57%]
+tests/test_qido_wildcard_integration.py::test_qido_exact_match_without_wildcard PASSED [ 57%]
+tests/test_qido_wildcard_integration.py::test_qido_wildcard_takes_precedence_over_fuzzy PASSED [ 58%]
+tests/test_qido_wildcard_integration.py::test_qido_wildcard_mixed_asterisk_and_question PASSED [ 58%]
+tests/test_search_utils.py::test_build_fuzzy_name_filter_single_word PASSED [ 59%]
+tests/test_search_utils.py::test_build_fuzzy_name_filter_multiple_words PASSED [ 59%]
+tests/test_search_utils.py::test_build_fuzzy_name_filter_empty_input PASSED [ 60%]
+tests/test_search_utils.py::test_translate_wildcards PASSED              [ 60%]
+tests/test_search_utils.py::test_parse_uid_list_comma_separated PASSED   [ 60%]
+tests/test_search_utils.py::test_parse_uid_list_backslash_separated PASSED [ 61%]
+tests/test_search_utils.py::test_parse_uid_list_with_whitespace PASSED   [ 61%]
+tests/test_ups_cancel.py::test_cancel_scheduled_workitem PASSED          [ 62%]
+tests/test_ups_cancel.py::test_cannot_cancel_in_progress_workitem PASSED [ 62%]
+tests/test_ups_cancel.py::test_cannot_cancel_completed_workitem PASSED   [ 63%]
+tests/test_ups_cancel.py::test_cancel_nonexistent_workitem PASSED        [ 63%]
+tests/test_ups_cancel.py::test_canceled_workitem_state_persisted PASSED  [ 64%]
+tests/test_ups_cancel.py::test_canceled_workitem_retrievable PASSED      [ 64%]
+tests/test_ups_create.py::test_create_workitem_post PASSED               [ 64%]
+tests/test_ups_create.py::test_create_workitem_duplicate PASSED          [ 65%]
+tests/test_ups_create.py::test_create_workitem_must_be_scheduled PASSED  [ 65%]
+tests/test_ups_create.py::test_create_workitem_no_transaction_uid PASSED [ 66%]
+tests/test_ups_create.py::test_create_workitem_uid_from_dataset PASSED   [ 66%]
+tests/test_ups_create.py::test_create_workitem_path_parameter PASSED     [ 67%]
+tests/test_ups_retrieve.py::test_retrieve_workitem PASSED                [ 67%]
+tests/test_ups_retrieve.py::test_retrieve_nonexistent_workitem PASSED    [ 68%]
+tests/test_ups_search.py::test_search_all_workitems PASSED               [ 68%]
+tests/test_ups_search.py::test_search_workitems_by_patient_id PASSED     [ 68%]
+tests/test_ups_search.py::test_search_workitems_by_patient_name PASSED   [ 69%]
+tests/test_ups_search.py::test_search_workitems_by_state PASSED          [ 69%]
+tests/test_ups_search.py::test_search_workitems_with_multiple_filters PASSED [ 70%]
+tests/test_ups_search.py::test_search_workitems_pagination PASSED        [ 70%]
+tests/test_ups_search.py::test_search_workitems_no_results PASSED        [ 71%]
+tests/test_ups_search.py::test_search_workitems_transaction_uid_not_exposed PASSED [ 71%]
+tests/test_ups_state.py::test_claim_workitem_scheduled_to_in_progress PASSED [ 72%]
+tests/test_ups_state.py::test_complete_workitem_in_progress_to_completed PASSED [ 72%]
+tests/test_ups_state.py::test_cannot_complete_with_wrong_txn_uid PASSED  [ 72%]
+tests/test_ups_state.py::test_cannot_claim_without_txn_uid PASSED        [ 73%]
+tests/test_ups_state.py::test_cannot_transition_from_completed PASSED    [ 73%]
+tests/test_ups_state.py::test_state_change_nonexistent_workitem PASSED   [ 74%]
+tests/test_ups_state.py::test_missing_state_in_payload PASSED            [ 74%]
+tests/test_ups_state_machine.py::test_valid_states_constant PASSED       [ 75%]
+tests/test_ups_state_machine.py::test_transition_scheduled_to_in_progress PASSED [ 75%]
+tests/test_ups_state_machine.py::test_transition_in_progress_to_completed PASSED [ 76%]
+tests/test_ups_state_machine.py::test_transition_in_progress_to_canceled PASSED [ 76%]
+tests/test_ups_state_machine.py::test_transition_scheduled_to_in_progress_without_txn_uid PASSED [ 76%]
+tests/test_ups_state_machine.py::test_transition_in_progress_to_completed_without_txn_uid PASSED [ 77%]
+tests/test_ups_state_machine.py::test_transition_in_progress_to_completed_wrong_txn_uid PASSED [ 77%]
+tests/test_ups_state_machine.py::test_transition_in_progress_to_canceled_without_txn_uid PASSED [ 78%]
+tests/test_ups_state_machine.py::test_transition_in_progress_to_canceled_wrong_txn_uid PASSED [ 78%]
+tests/test_ups_state_machine.py::test_transition_scheduled_to_canceled_fails PASSED [ 79%]
+tests/test_ups_state_machine.py::test_transition_from_completed_fails PASSED [ 79%]
+tests/test_ups_state_machine.py::test_transition_from_canceled_fails PASSED [ 80%]
+tests/test_ups_state_machine.py::test_transition_scheduled_to_completed_fails PASSED [ 80%]
+tests/test_ups_state_machine.py::test_invalid_current_state PASSED       [ 80%]
+tests/test_ups_state_machine.py::test_invalid_new_state PASSED           [ 81%]
+tests/test_ups_state_machine.py::test_can_update_scheduled_workitem PASSED [ 81%]
+tests/test_ups_state_machine.py::test_can_update_in_progress_with_matching_txn_uid PASSED [ 82%]
+tests/test_ups_state_machine.py::test_cannot_update_in_progress_without_txn_uid PASSED [ 82%]
+tests/test_ups_state_machine.py::test_cannot_update_in_progress_with_wrong_txn_uid PASSED [ 83%]
+tests/test_ups_state_machine.py::test_cannot_update_completed_workitem PASSED [ 83%]
+tests/test_ups_state_machine.py::test_cannot_update_canceled_workitem PASSED [ 84%]
+tests/test_ups_subscriptions.py::test_subscribe_returns_501 PASSED       [ 84%]
+tests/test_ups_subscriptions.py::test_unsubscribe_returns_501 PASSED     [ 84%]
+tests/test_ups_subscriptions.py::test_list_subscriptions_returns_501 PASSED [ 85%]
+tests/test_ups_update.py::test_update_scheduled_workitem_success PASSED  [ 85%]
+tests/test_ups_update.py::test_update_in_progress_with_correct_txn_uid PASSED [ 86%]
+tests/test_ups_update.py::test_update_in_progress_without_txn_uid PASSED [ 86%]
+tests/test_ups_update.py::test_update_in_progress_with_wrong_txn_uid PASSED [ 87%]
+tests/test_ups_update.py::test_cannot_update_completed_workitem PASSED   [ 87%]
+tests/test_ups_update.py::test_cannot_change_sop_instance_uid PASSED     [ 88%]
+tests/test_ups_update.py::test_cannot_change_state_via_update PASSED     [ 88%]
+tests/test_ups_update.py::test_cannot_add_transaction_uid PASSED         [ 88%]
+tests/test_ups_update.py::test_update_nonexistent_workitem PASSED        [ 89%]
+tests/test_ups_update.py::test_searchable_attributes_reextracted_after_update PASSED [ 89%]
+tests/test_upsert.py::test_upsert_creates_new_instance PASSED            [ 90%]
+tests/test_upsert.py::test_upsert_replaces_existing_instance PASSED      [ 90%]
+tests/test_upsert.py::test_delete_instance PASSED                        [ 91%]
+tests/test_upsert.py::test_store_instance PASSED                         [ 91%]
+tests/test_wado_rs_frames.py::test_retrieve_single_frame SKIPPED)        [ 92%]
+tests/test_wado_rs_frames.py::test_retrieve_multiple_frames SKIPPED      [ 92%]
+tests/test_wado_rs_frames.py::test_retrieve_frame_not_found SKIPPED      [ 92%]
+tests/test_wado_rs_frames.py::test_retrieve_frame_out_of_range SKIPPED   [ 93%]
+tests/test_wado_rs_rendered.py::test_render_instance_jpeg SKIPPED        [ 93%]
+tests/test_wado_rs_rendered.py::test_render_instance_png SKIPPED         [ 94%]
+tests/test_wado_rs_rendered.py::test_render_frame_with_quality SKIPPED   [ 94%]
+tests/test_workitem_model.py::test_workitem_creation PASSED              [ 95%]
+tests/test_workitem_model.py::test_workitem_state_values PASSED          [ 95%]
+tests/test_workitem_model.py::test_workitem_with_transaction_uid PASSED  [ 96%]
+tests/test_workitem_model.py::test_workitem_with_patient_info PASSED     [ 96%]
+tests/test_workitem_model.py::test_workitem_with_scheduling PASSED       [ 96%]
+tests/test_workitem_model.py::test_workitem_with_station_codes PASSED    [ 97%]
+tests/test_workitem_model.py::test_workitem_default_state PASSED         [ 97%]
+tests/test_workitem_model.py::test_workitem_database_persistence PASSED  [ 98%]
+tests/test_workitem_model.py::test_workitem_query_by_patient_id PASSED   [ 98%]
+tests/test_workitem_model.py::test_workitem_query_by_state PASSED        [ 99%]
+tests/test_workitem_model.py::test_workitem_query_by_accession_number PASSED [ 99%]
+tests/test_workitem_model.py::test_workitem_composite_query_state_patient PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/services/test_webhook_provider.py::test_webhook_provider_publish_success
+tests/services/test_webhook_provider.py::test_webhook_provider_publish_batch
+tests/services/test_webhook_provider.py::test_webhook_provider_retry_on_failure
+  /Users/rhavekost/Projects/rhavekost/azure-dicom-service-emulator/app/services/events/providers.py:113: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    response.raise_for_status()
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_fixtures_work.py: 1 warning
+tests/test_frame_extraction.py: 3 warnings
+tests/test_image_rendering.py: 10 warnings
+tests/test_put_stow.py: 7 warnings
+  /Users/rhavekost/Projects/rhavekost/azure-dicom-service-emulator/venv/lib/python3.14/site-packages/pydicom/filewriter.py:1309: DeprecationWarning: 'write_like_original' is deprecated and will be removed in v4.0, please use 'enforce_file_format' instead
+    warn_and_log(
+
+tests/test_frame_extraction.py::test_extract_single_frame
+tests/test_frame_extraction.py::test_extract_multi_frame
+tests/test_frame_extraction.py::test_extract_frames_no_pixel_data
+  /Users/rhavekost/Projects/rhavekost/azure-dicom-service-emulator/venv/lib/python3.14/site-packages/pydicom/dataset.py:1378: DeprecationWarning: 'FileDataset.is_little_endian' will be removed in v4.0, set the Transfer Syntax UID or use the 'little_endian' argument with FileDataset.save_as() or dcmwrite() instead
+    warn_and_log(
+
+tests/test_frame_extraction.py::test_extract_single_frame
+tests/test_frame_extraction.py::test_extract_multi_frame
+tests/test_frame_extraction.py::test_extract_frames_no_pixel_data
+  /Users/rhavekost/Projects/rhavekost/azure-dicom-service-emulator/venv/lib/python3.14/site-packages/pydicom/dataset.py:1337: DeprecationWarning: 'FileDataset.is_implicit_VR' will be removed in v4.0, set the Transfer Syntax UID or use the 'implicit_vr' argument with FileDataset.save_as() or dcmwrite() instead
+    warn_and_log(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform darwin, python 3.14.2-final-0 _______________
+
+Name                                 Stmts   Miss   Cover   Missing
+-------------------------------------------------------------------
+app/__init__.py                          1      0 100.00%
+app/database.py                         10      2  80.00%   23-24
+app/models/__init__.py                   0      0 100.00%
+app/models/dicom.py                     97      0 100.00%
+app/models/events.py                    25      0 100.00%
+app/routers/__init__.py                  2      0 100.00%
+app/routers/changefeed.py               29     17  41.38%   29-47, 67-74
+app/routers/debug.py                    29     22  24.14%   17-35, 44-61
+app/routers/dicomweb.py                449    365  18.71%   99-251, 277-433, 451-456, 465, 476-479, 489, 501-506, 519, 545-606, 633-676, 704-752, 780-817, 840-876, 900-922, 939, 950, 962, 973-983, 1006-1012, 1035-1052, 1065-1089, 1103-1167, 1172-1181
+app/routers/extended_query_tags.py      50     30  40.00%   35-39, 59-97, 111-118, 135-145
+app/routers/operations.py               14      6  57.14%   19-26
+app/routers/ups.py                     171      3  98.25%   63, 104, 330
+app/services/__init__.py                 0      0 100.00%
+app/services/dicom_engine.py           112     60  46.43%   39-44, 71, 76-78, 91, 94, 100-101, 112-136, 152-153, 168-186, 191-192, 197-198, 208-218, 232-257
+app/services/events/__init__.py          4      0 100.00%
+app/services/events/config.py           68     17  75.00%   45-47, 52, 56-57, 72-73, 80-82, 105-106, 112-113, 121-124
+app/services/events/manager.py          46     16  65.22%   44-62, 69-70
+app/services/events/providers.py        68      0 100.00%
+app/services/expiry.py                  42      5  88.10%   66-67, 106-108
+app/services/frame_cache.py             46      1  97.83%   67
+app/services/frame_extraction.py        39      6  84.62%   45-46, 57-58, 66-67
+app/services/image_rendering.py         64      4  93.75%   47-48, 53-54
+app/services/multipart.py               36     31  13.89%   25-61, 75-88
+app/services/search_utils.py            23      0 100.00%
+app/services/ups_state_machine.py       42      1  97.62%   141
+app/services/upsert.py                  50      1  98.00%   87
+-------------------------------------------------------------------
+TOTAL                                 1517    587  61.31%
+Required test coverage of 61.0% reached. Total coverage: 61.31%
+============ 218 passed, 7 skipped, 30 warnings in 88.73s (0:01:28) ============
