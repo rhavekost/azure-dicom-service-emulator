@@ -1,5 +1,6 @@
 """Test fixtures for Azure DICOM Service Emulator."""
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,14 +9,30 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+# Set default test storage dir before importing app modules
+# This ensures STORAGE_DIR in dicom_engine.py gets the test value
+os.environ.setdefault("DICOM_STORAGE_DIR", "/tmp/test_dicom_storage")
+
 from app.database import Base, get_db
 from app.routers import changefeed, debug, dicomweb, extended_query_tags, operations, ups
 from tests.fixtures.factories import DicomFactory
 
 
 @pytest.fixture
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
     """Create a TestClient with in-memory test database."""
+
+    # Set DICOM storage directory to temporary path
+    storage_dir = tmp_path / "dicom_storage"
+    storage_dir.mkdir(exist_ok=True)
+
+    # Monkeypatch the STORAGE_DIR in dicom_engine module
+    import app.services.dicom_engine as dicom_engine
+
+    monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
+
+    # Also set environment variable for other modules that might use it
+    monkeypatch.setenv("DICOM_STORAGE_DIR", str(storage_dir))
 
     # Create test database engine
     db_path = tmp_path / "test.db"

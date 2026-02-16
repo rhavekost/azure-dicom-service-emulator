@@ -93,7 +93,7 @@ class ChangeFeedEntry(Base):
 
     __tablename__ = "change_feed"
 
-    sequence = Column(BigInteger, primary_key=True, autoincrement=True)
+    sequence = Column(Integer, primary_key=True, autoincrement=True)
     study_instance_uid = Column(String(128), nullable=False)
     series_instance_uid = Column(String(128), nullable=False)
     sop_instance_uid = Column(String(128), nullable=False)
