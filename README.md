@@ -286,6 +286,40 @@ curl -X POST "http://localhost:8080/v2/workitems/1.2.3.workitem1/cancelrequest"
 - ✅ **Search & Filter** - By patient, state, scheduled time
 - ✅ **Atomic Updates** - Update attributes with transaction UID validation
 
+## Testing
+
+Comprehensive test suite with 225+ tests and 61%+ code coverage.
+
+```bash
+# Run all tests
+pytest
+
+# Run by layer
+pytest tests/unit/ -m unit           # Unit tests
+pytest tests/integration/ -m integration  # Integration tests
+
+# With coverage report
+pytest --cov=app --cov-report=html
+open htmlcov/index.html
+
+# Run in parallel (faster)
+pytest -n auto
+```
+
+**Test Organization:**
+- `tests/unit/` - Unit tests for models, services, utilities
+- `tests/integration/` - API endpoint integration tests
+- `tests/e2e/` - End-to-end workflow tests
+- `tests/performance/` - Benchmarks and load tests
+- `tests/security/` - Security scans
+
+See [tests/README.md](tests/README.md) for complete testing guide.
+
+**CI/CD:**
+- Automated testing on every push and pull request
+- Security scanning (Bandit, Safety)
+- Pre-commit hooks for code quality
+
 ## Roadmap
 
 - [x] WADO-RS frames and rendered endpoints
@@ -293,10 +327,11 @@ curl -X POST "http://localhost:8080/v2/workitems/1.2.3.workitem1/cancelrequest"
 - [x] Wildcard matching for QIDO-RS
 - [x] UID list queries for QIDO-RS
 - [x] Worklist Service (UPS-RS) — full CRUD, state machine, search
+- [x] Comprehensive test suite (225+ tests, 61%+ coverage)
+- [x] CI/CD workflows (tests + security)
 - [ ] Event Grid emulation (webhook notifications)
 - [ ] Auth mock (accept any bearer token)
 - [ ] Bulk Update API
-- [ ] Integration test suite
 - [ ] Published Docker image on GHCR
 
 ## Not Emulated (Yet)
