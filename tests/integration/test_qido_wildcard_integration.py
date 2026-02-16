@@ -4,8 +4,8 @@ These tests verify that wildcard matching works through _parse_qido_params().
 """
 
 import pytest
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.datastructures import QueryParams
 
 from app.models.dicom import DicomInstance
@@ -23,6 +23,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -122,9 +123,15 @@ async def test_qido_wildcard_patient_id_question_mark(db_session):
 async def test_qido_wildcard_study_description(db_session):
     """Test QIDO-RS with wildcard in StudyDescription."""
     # Create test instances
-    await create_test_instance(db_session, "PAT1", study_description="Chest CT", study_uid="1.2.3.1")
-    await create_test_instance(db_session, "PAT2", study_description="Chest PE Protocol", study_uid="1.2.3.2")
-    await create_test_instance(db_session, "PAT3", study_description="Abdomen CT", study_uid="1.2.3.3")
+    await create_test_instance(
+        db_session, "PAT1", study_description="Chest CT", study_uid="1.2.3.1"
+    )
+    await create_test_instance(
+        db_session, "PAT2", study_description="Chest PE Protocol", study_uid="1.2.3.2"
+    )
+    await create_test_instance(
+        db_session, "PAT3", study_description="Abdomen CT", study_uid="1.2.3.3"
+    )
 
     # Build filters with wildcard: Chest*
     params = QueryParams({"StudyDescription": "Chest*"})

@@ -1,17 +1,18 @@
 """Event provider base class and implementations."""
 
-import httpx
 import json
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
+
+import httpx
+from azure.storage.queue import QueueClient
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-from azure.storage.queue import QueueClient
 
 from app.models.events import DicomEvent
 
@@ -103,13 +104,12 @@ class WebhookEventProvider(EventProvider):
 
     async def _send_webhook(self, event: DicomEvent) -> None:
         """Send webhook with exponential backoff retry."""
+
         # Apply retry decorator dynamically
         @self._get_retry_decorator()
         async def _do_send():
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    self.url, json=event.to_dict(), timeout=5.0
-                )
+                response = await client.post(self.url, json=event.to_dict(), timeout=5.0)
                 response.raise_for_status()
 
         await _do_send()
@@ -128,19 +128,19 @@ class AzureStorageQueueProvider(EventProvider):
     """Azure Storage Queue event provider (Azurite compatible)."""
 
     def __init__(self, connection_string: str, queue_name: str):
-        self.queue_client = QueueClient.from_connection_string(
-            connection_string, queue_name
-        )
+        self.queue_client = QueueClient.from_connection_string(connection_string, queue_name)
 
     async def publish(self, event: DicomEvent) -> None:
         """Send event to Azure Storage Queue."""
         import json
+
         message = json.dumps(event.to_dict())
         self.queue_client.send_message(message)
 
     async def publish_batch(self, events: list[DicomEvent]) -> None:
         """Send batch of events to Azure Storage Queue."""
         import json
+
         for event in events:
             message = json.dumps(event.to_dict())
             self.queue_client.send_message(message)

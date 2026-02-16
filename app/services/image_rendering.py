@@ -1,20 +1,18 @@
 """Image rendering service for WADO-RS rendered endpoints."""
 
-import logging
 import io
+import logging
 from pathlib import Path
-import pydicom
+
 import numpy as np
+import pydicom
 from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 
 def render_frame(
-    dcm_path: Path,
-    frame_number: int = 1,
-    format: str = "jpeg",
-    quality: int = 100
+    dcm_path: Path, frame_number: int = 1, format: str = "jpeg", quality: int = 100
 ) -> bytes:
     """
     Render DICOM frame to image format.
@@ -31,9 +29,7 @@ def render_frame(
     Raises:
         ValueError: If frame number out of range or no pixel data
     """
-    logger.info(
-        f"Rendering frame {frame_number} from {dcm_path} as {format} (quality={quality})"
-    )
+    logger.info(f"Rendering frame {frame_number} from {dcm_path} as {format} (quality={quality})")
 
     # Validate quality parameter for JPEG
     if format.lower() == "jpeg" and not (1 <= quality <= 100):
@@ -54,7 +50,7 @@ def render_frame(
         raise ValueError("Instance does not contain decodable pixel data") from e
 
     # Check for multi-frame using NumberOfFrames attribute
-    num_frames = getattr(ds, 'NumberOfFrames', 1)
+    num_frames = getattr(ds, "NumberOfFrames", 1)
 
     if num_frames > 1:
         # Multi-frame image
@@ -70,15 +66,9 @@ def render_frame(
         frame_data = pixel_array
 
     # Apply windowing if present
-    if hasattr(ds, 'WindowCenter') and hasattr(ds, 'WindowWidth'):
-        logger.debug(
-            f"Applying windowing: center={ds.WindowCenter}, width={ds.WindowWidth}"
-        )
-        frame_data = apply_windowing(
-            frame_data,
-            ds.WindowCenter,
-            ds.WindowWidth
-        )
+    if hasattr(ds, "WindowCenter") and hasattr(ds, "WindowWidth"):
+        logger.debug(f"Applying windowing: center={ds.WindowCenter}, width={ds.WindowWidth}")
+        frame_data = apply_windowing(frame_data, ds.WindowCenter, ds.WindowWidth)
 
     # Normalize to 8-bit if needed
     if frame_data.dtype != np.uint8:
@@ -103,9 +93,7 @@ def render_frame(
 
 
 def apply_windowing(
-    pixel_array: np.ndarray,
-    center: float | list[float],
-    width: float | list[float]
+    pixel_array: np.ndarray, center: float | list[float], width: float | list[float]
 ) -> np.ndarray:
     """
     Apply DICOM windowing to pixel array.

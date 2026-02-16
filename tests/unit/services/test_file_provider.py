@@ -1,4 +1,3 @@
-
 """Tests for FileEventProvider."""
 
 import json
@@ -11,6 +10,7 @@ from app.models.events import DicomEvent
 from app.services.events.providers import FileEventProvider
 
 pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_file_provider_publish():
@@ -39,7 +39,9 @@ async def test_file_provider_publish_multiple():
         provider = FileEventProvider(str(file_path))
 
         event1 = DicomEvent.from_instance_created("1.2.3", "4.5.6", "7.8.9", 1, "http://localhost")
-        event2 = DicomEvent.from_instance_created("1.2.3", "4.5.6", "10.11.12", 2, "http://localhost")
+        event2 = DicomEvent.from_instance_created(
+            "1.2.3", "4.5.6", "10.11.12", 2, "http://localhost"
+        )
 
         await provider.publish(event1)
         await provider.publish(event2)

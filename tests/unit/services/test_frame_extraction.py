@@ -1,12 +1,15 @@
-import pytest
 from pathlib import Path
+
 import numpy as np
 import pydicom
+import pytest
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import ExplicitVRLittleEndian
+
 from app.services.frame_extraction import extract_frames
 
 pytestmark = pytest.mark.unit
+
 
 def create_synthetic_dicom(path: Path, rows: int = 64, columns: int = 64, frames: int = 1) -> None:
     """

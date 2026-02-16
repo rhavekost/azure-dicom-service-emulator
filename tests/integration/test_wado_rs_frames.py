@@ -1,10 +1,10 @@
-
 """Integration tests for WADO-RS frame retrieval endpoint."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_retrieve_single_frame(client: TestClient):
     """Retrieve single frame from instance."""

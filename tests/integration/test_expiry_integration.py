@@ -1,10 +1,11 @@
 """Integration tests for expiry workflow (Phase 3, Task 6)."""
 
-import pytest
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
+import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomStudy
 from app.services.expiry import delete_expired_studies
@@ -50,8 +51,7 @@ async def test_expiry_workflow_end_to_end(db_session, tmp_path):
     """
     # 1. Create study with expiry
     study = DicomStudy(
-        study_instance_uid="1.2.3",
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=1)
+        study_instance_uid="1.2.3", expires_at=datetime.now(timezone.utc) + timedelta(seconds=1)
     )
     db_session.add(study)
     await db_session.commit()

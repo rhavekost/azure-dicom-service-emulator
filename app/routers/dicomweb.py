@@ -12,32 +12,32 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response, HTTPException
-from sqlalchemy import select, func, and_, delete as sql_delete
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.dicom import DicomInstance, DicomStudy, ChangeFeedEntry
+from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy
 from app.models.events import DicomEvent
 from app.services.dicom_engine import (
-    parse_dicom,
-    dataset_to_dicom_json,
-    extract_searchable_metadata,
-    store_instance,
-    read_instance,
-    delete_instance_file,
-    validate_required_attributes,
     build_store_response,
+    dataset_to_dicom_json,
+    delete_instance_file,
+    extract_searchable_metadata,
+    parse_dicom,
+    read_instance,
+    store_instance,
+    validate_required_attributes,
 )
-from app.services.multipart import parse_multipart_related, build_multipart_response
 from app.services.frame_cache import FrameCache
 from app.services.image_rendering import render_frame as render_frame_to_image
+from app.services.multipart import build_multipart_response, parse_multipart_related
+from app.services.search_utils import build_fuzzy_name_filter, parse_uid_list, translate_wildcards
 from app.services.upsert import upsert_instance
-from app.services.search_utils import build_fuzzy_name_filter, translate_wildcards, parse_uid_list
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +74,13 @@ QIDO_TAG_MAP = {
 # ── DICOM Failure Reason Codes ─────────────────────────────────────
 # Used in STOW-RS FailedSOPSequence responses (tag 0x00081197)
 FAILURE_REASON_UNABLE_TO_PROCESS = 0xC000  # Processing failure
-FAILURE_REASON_UID_MISMATCH = 0xC409        # StudyInstanceUID mismatch
+FAILURE_REASON_UID_MISMATCH = 0xC409  # StudyInstanceUID mismatch
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  STOW-RS — Store Instances
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 @router.post("/studies")
 @router.post("/studies/{study_instance_uid}")
@@ -114,11 +115,13 @@ async def stow_rs(
             # Validate required attributes
             errors = validate_required_attributes(ds)
             if errors:
-                failures.append({
-                    "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
-                    "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
-                    "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
-                })
+                failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
+                        "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
+                    }
+                )
                 continue
 
             sop_uid = str(ds.SOPInstanceUID)
@@ -127,11 +130,13 @@ async def stow_rs(
 
             # If study UID provided in URL, validate match
             if study_instance_uid and study_uid != study_instance_uid:
-                failures.append({
-                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                    "00081155": {"vr": "UI", "Value": [sop_uid]},
-                    "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
-                })
+                failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                        "00081155": {"vr": "UI", "Value": [sop_uid]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
+                    }
+                )
                 continue
 
             if effective_study_uid is None:
@@ -160,9 +165,11 @@ async def stow_rs(
                 existing_instance.file_path = file_path
                 existing_instance.file_size = file_size
                 existing_instance.dicom_json = dicom_json
-                existing_instance.transfer_syntax_uid = str(
-                    getattr(ds.file_meta, "TransferSyntaxUID", "")
-                ) if hasattr(ds, "file_meta") else None
+                existing_instance.transfer_syntax_uid = (
+                    str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
+                    if hasattr(ds, "file_meta")
+                    else None
+                )
                 for col, val in searchable.items():
                     setattr(existing_instance, col, val)
                 stored_instance = existing_instance
@@ -173,9 +180,9 @@ async def stow_rs(
                     series_instance_uid=series_uid,
                     sop_instance_uid=sop_uid,
                     sop_class_uid=str(getattr(ds, "SOPClassUID", "")),
-                    transfer_syntax_uid=str(
-                        getattr(ds.file_meta, "TransferSyntaxUID", "")
-                    ) if hasattr(ds, "file_meta") else None,
+                    transfer_syntax_uid=str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
+                    if hasattr(ds, "file_meta")
+                    else None,
                     dicom_json=dicom_json,
                     file_path=file_path,
                     file_size=file_size,
@@ -198,22 +205,29 @@ async def stow_rs(
             if action == "update":
                 await _mark_previous_feed_entries(db, sop_uid)
 
-            stored.append({
-                "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                "00081155": {"vr": "UI", "Value": [sop_uid]},
-                "00081190": {"vr": "UR", "Value": [
-                    f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
-                ]},
-            })
+            stored.append(
+                {
+                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                    "00081155": {"vr": "UI", "Value": [sop_uid]},
+                    "00081190": {
+                        "vr": "UR",
+                        "Value": [
+                            f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
+                        ],
+                    },
+                }
+            )
 
             # Track instance for event publishing
             instances_to_publish.append(stored_instance)
 
         except Exception as e:
-            failures.append({
-                "00081197": {"vr": "US", "Value": [0xC000]},
-                "00081196": {"vr": "LO", "Value": [str(e)]},
-            })
+            failures.append(
+                {
+                    "00081197": {"vr": "US", "Value": [0xC000]},
+                    "00081196": {"vr": "LO", "Value": [str(e)]},
+                }
+            )
             has_warnings = True
 
     await db.commit()
@@ -222,6 +236,7 @@ async def stow_rs(
     for instance in instances_to_publish:
         try:
             from main import get_event_manager
+
             event_manager = get_event_manager()
             event = DicomEvent.from_instance_created(
                 study_uid=instance.study_instance_uid,
@@ -301,11 +316,13 @@ async def stow_rs_put(
             # Validate required attributes
             errors = validate_required_attributes(ds)
             if errors:
-                failures.append({
-                    "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
-                    "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
-                    "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
-                })
+                failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
+                        "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
+                    }
+                )
                 continue
 
             sop_uid = str(ds.SOPInstanceUID)
@@ -314,11 +331,13 @@ async def stow_rs_put(
 
             # If study UID provided in URL, validate match
             if study_instance_uid and study_uid != study_instance_uid:
-                failures.append({
-                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                    "00081155": {"vr": "UI", "Value": [sop_uid]},
-                    "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
-                })
+                failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                        "00081155": {"vr": "UI", "Value": [sop_uid]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
+                    }
+                )
                 continue
 
             if effective_study_uid is None:
@@ -334,11 +353,11 @@ async def stow_rs_put(
                 "dicom_json": dicom_json,
                 "metadata": {
                     "sop_class_uid": str(getattr(ds, "SOPClassUID", "")),
-                    "transfer_syntax_uid": str(
-                        getattr(ds.file_meta, "TransferSyntaxUID", "")
-                    ) if hasattr(ds, "file_meta") else None,
+                    "transfer_syntax_uid": str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
+                    if hasattr(ds, "file_meta")
+                    else None,
                     **searchable,
-                }
+                },
             }
 
             # Use upsert service for create-or-replace
@@ -360,13 +379,18 @@ async def stow_rs_put(
             if action == "replaced":
                 await _mark_previous_feed_entries(db, sop_uid)
 
-            stored.append({
-                "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                "00081155": {"vr": "UI", "Value": [sop_uid]},
-                "00081190": {"vr": "UR", "Value": [
-                    f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
-                ]},
-            })
+            stored.append(
+                {
+                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                    "00081155": {"vr": "UI", "Value": [sop_uid]},
+                    "00081190": {
+                        "vr": "UR",
+                        "Value": [
+                            f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
+                        ],
+                    },
+                }
+            )
 
             # Get instance for event publishing
             result = await db.execute(
@@ -377,10 +401,12 @@ async def stow_rs_put(
                 instances_to_publish.append(stored_instance)
 
         except Exception as e:
-            failures.append({
-                "00081197": {"vr": "US", "Value": [0xC000]},
-                "00081196": {"vr": "LO", "Value": [str(e)]},
-            })
+            failures.append(
+                {
+                    "00081197": {"vr": "US", "Value": [0xC000]},
+                    "00081196": {"vr": "LO", "Value": [str(e)]},
+                }
+            )
             has_warnings = True
 
     # Create/update DicomStudy with expiry
@@ -403,6 +429,7 @@ async def stow_rs_put(
     for instance in instances_to_publish:
         try:
             from main import get_event_manager
+
             event_manager = get_event_manager()
             event = DicomEvent.from_instance_created(
                 study_uid=instance.study_instance_uid,
@@ -440,6 +467,7 @@ async def stow_rs_put(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  WADO-RS — Retrieve Instances & Metadata
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 @router.get("/studies/{study_uid}")
 async def wado_rs_study(
@@ -563,7 +591,9 @@ async def retrieve_frames(
     # Single frame retrieval
     if len(frame_numbers) == 1:
         try:
-            frame_path = frame_cache.get_frame(study_uid, series_uid, instance_uid, frame_numbers[0])
+            frame_path = frame_cache.get_frame(
+                study_uid, series_uid, instance_uid, frame_numbers[0]
+            )
             frame_data = frame_path.read_bytes()
 
             return Response(
@@ -659,10 +689,7 @@ async def retrieve_rendered_instance(
     try:
         # Render frame 1 (entire instance)
         image_bytes = render_frame_to_image(
-            dcm_path,
-            frame_number=1,
-            format=format,
-            quality=quality
+            dcm_path, frame_number=1, format=format, quality=quality
         )
 
         return Response(
@@ -730,10 +757,7 @@ async def retrieve_rendered_frame(
     try:
         # Render specific frame
         image_bytes = render_frame_to_image(
-            dcm_path,
-            frame_number=frame,
-            format=format,
-            quality=quality
+            dcm_path, frame_number=frame, format=format, quality=quality
         )
 
         return Response(
@@ -755,6 +779,7 @@ async def retrieve_rendered_frame(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  QIDO-RS — Query/Search
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 @router.get("/studies")
 async def qido_rs_studies(
@@ -804,13 +829,25 @@ async def qido_rs_studies(
         study_json = {
             "0020000D": {"vr": "UI", "Value": [study_uid]},
             "00100020": {"vr": "LO", "Value": [first.patient_id] if first.patient_id else {}},
-            "00100010": {"vr": "PN", "Value": [{"Alphabetic": first.patient_name}] if first.patient_name else {}},
+            "00100010": {
+                "vr": "PN",
+                "Value": [{"Alphabetic": first.patient_name}] if first.patient_name else {},
+            },
             "00080020": {"vr": "DA", "Value": [first.study_date] if first.study_date else {}},
-            "00080050": {"vr": "SH", "Value": [first.accession_number] if first.accession_number else {}},
-            "00081030": {"vr": "LO", "Value": [first.study_description] if first.study_description else {}},
+            "00080050": {
+                "vr": "SH",
+                "Value": [first.accession_number] if first.accession_number else {},
+            },
+            "00081030": {
+                "vr": "LO",
+                "Value": [first.study_description] if first.study_description else {},
+            },
             "00080061": {"vr": "CS", "Value": modalities},  # ModalitiesInStudy
             "00201206": {"vr": "IS", "Value": [len(series_uids)]},  # NumberOfStudyRelatedSeries
-            "00201208": {"vr": "IS", "Value": [len(study_instances)]},  # NumberOfStudyRelatedInstances
+            "00201208": {
+                "vr": "IS",
+                "Value": [len(study_instances)],
+            },  # NumberOfStudyRelatedInstances
         }
         response.append(study_json)
 
@@ -867,9 +904,15 @@ async def qido_rs_series(
             "0020000D": {"vr": "UI", "Value": [study_uid]},
             "0020000E": {"vr": "UI", "Value": [series_uid]},
             "00080060": {"vr": "CS", "Value": [first.modality] if first.modality else {}},
-            "0008103E": {"vr": "LO", "Value": [first.series_description] if first.series_description else {}},
+            "0008103E": {
+                "vr": "LO",
+                "Value": [first.series_description] if first.series_description else {},
+            },
             "00200011": {"vr": "IS", "Value": [first.series_number] if first.series_number else {}},
-            "00201209": {"vr": "IS", "Value": [len(series_instances)]},  # NumberOfSeriesRelatedInstances
+            "00201209": {
+                "vr": "IS",
+                "Value": [len(series_instances)],
+            },  # NumberOfSeriesRelatedInstances
         }
         response.append(series_json)
 
@@ -929,6 +972,7 @@ async def qido_rs_instances(
 #  DELETE — Remove studies/series/instances
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 @router.delete("/studies/{study_uid}")
 async def delete_study(
     study_uid: str,
@@ -968,9 +1012,9 @@ async def delete_instance(
 #  Helpers
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 def _json_dumps(obj) -> bytes:
     """JSON serialize with support for UUID and datetime."""
-    import json
 
     class Encoder(json.JSONEncoder):
         def default(self, o):
@@ -1088,7 +1132,7 @@ async def _retrieve_instances(
 
     return Response(
         content=body,
-        media_type=f"multipart/related; type=\"application/dicom\"; boundary={boundary}",
+        media_type=f'multipart/related; type="application/dicom"; boundary={boundary}',
     )
 
 
@@ -1118,12 +1162,14 @@ async def _delete_instances(
     # Track instances for event publishing (need data before deletion)
     deleted_instances_data = []
     for inst in instances:
-        deleted_instances_data.append({
-            "study_uid": inst.study_instance_uid,
-            "series_uid": inst.series_instance_uid,
-            "instance_uid": inst.sop_instance_uid,
-            "sequence_number": inst.id,
-        })
+        deleted_instances_data.append(
+            {
+                "study_uid": inst.study_instance_uid,
+                "series_uid": inst.series_instance_uid,
+                "instance_uid": inst.sop_instance_uid,
+                "sequence_number": inst.id,
+            }
+        )
 
     for inst in instances:
         # Add change feed entry for deletion
@@ -1151,6 +1197,7 @@ async def _delete_instances(
     for inst_data in deleted_instances_data:
         try:
             from main import get_event_manager
+
             event_manager = get_event_manager()
             event = DicomEvent.from_instance_deleted(
                 study_uid=inst_data["study_uid"],
@@ -1162,7 +1209,9 @@ async def _delete_instances(
             await event_manager.publish(event)
         except Exception as e:
             # Log but don't fail the delete operation
-            logger.error(f"Failed to publish delete event for instance {inst_data['instance_uid']}: {e}")
+            logger.error(
+                f"Failed to publish delete event for instance {inst_data['instance_uid']}: {e}"
+            )
 
     return Response(status_code=204)
 
@@ -1170,12 +1219,15 @@ async def _delete_instances(
 async def _mark_previous_feed_entries(db: AsyncSession, sop_uid: str):
     """Mark previous change feed entries as replaced/deleted."""
     prev_entries = await db.execute(
-        select(ChangeFeedEntry).where(
+        select(ChangeFeedEntry)
+        .where(
             and_(
                 ChangeFeedEntry.sop_instance_uid == sop_uid,
                 ChangeFeedEntry.state == "current",
             )
-        ).order_by(ChangeFeedEntry.sequence.desc()).offset(1)
+        )
+        .order_by(ChangeFeedEntry.sequence.desc())
+        .offset(1)
     )
     for entry in prev_entries.scalars().all():
         entry.state = "replaced"

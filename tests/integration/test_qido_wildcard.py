@@ -1,18 +1,16 @@
-
 """Integration tests for wildcard matching in QIDO-RS search (Phase 4, Task 3)."""
 
-import pytest
-from datetime import datetime, timezone
 from io import BytesIO
 
 import pydicom
+import pytest
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomInstance
-from app.services.dicom_engine import extract_searchable_metadata, dataset_to_dicom_json
+from app.services.dicom_engine import dataset_to_dicom_json, extract_searchable_metadata
 
 pytestmark = pytest.mark.integration
 
@@ -26,6 +24,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -418,7 +417,6 @@ async def test_wildcard_only_asterisk(db_session):
     pat2 = await store_test_instance(db_session, "PAT2")
 
     from app.services.search_utils import translate_wildcards
-
 
     # Search for "*" (match all)
     pattern = translate_wildcards("*")

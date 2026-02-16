@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from typing import Any
 
 from app.models.events import DicomEvent
 from app.services.events.providers import EventProvider
@@ -23,10 +22,7 @@ class EventManager:
 
         for provider in self.providers:
             try:
-                await asyncio.wait_for(
-                    provider.publish(event),
-                    timeout=self.timeout
-                )
+                await asyncio.wait_for(provider.publish(event), timeout=self.timeout)
             except asyncio.TimeoutError:
                 provider_name = provider.__class__.__name__
                 logger.error(f"Provider {provider_name} timed out")
@@ -46,8 +42,7 @@ class EventManager:
         for provider in self.providers:
             try:
                 await asyncio.wait_for(
-                    provider.publish_batch(events),
-                    timeout=self.timeout * len(events)
+                    provider.publish_batch(events), timeout=self.timeout * len(events)
                 )
             except asyncio.TimeoutError:
                 provider_name = provider.__class__.__name__

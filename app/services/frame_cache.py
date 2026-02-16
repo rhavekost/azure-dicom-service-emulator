@@ -1,8 +1,9 @@
 """Frame cache manager for WADO-RS frame retrieval."""
 
 import logging
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
+
 from .frame_extraction import extract_frames
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,7 @@ class FrameCache:
         self.failure_ttl_seconds = failure_ttl_seconds
         self._extraction_failures: dict[str, datetime] = {}
 
-    def get_or_extract(
-        self,
-        study_uid: str,
-        series_uid: str,
-        instance_uid: str
-    ) -> list[Path]:
+    def get_or_extract(self, study_uid: str, series_uid: str, instance_uid: str) -> list[Path]:
         """
         Get frames from cache or extract if not cached.
 
@@ -52,14 +48,10 @@ class FrameCache:
         """
         # Check if previously failed
         if self._is_failed(instance_uid):
-            raise ValueError(
-                f"Instance {instance_uid} failed extraction in last hour"
-            )
+            raise ValueError(f"Instance {instance_uid} failed extraction in last hour")
 
         # Build paths
-        instance_dir = (
-            self.storage_dir / study_uid / series_uid / instance_uid
-        )
+        instance_dir = self.storage_dir / study_uid / series_uid / instance_uid
         dcm_path = instance_dir / "instance.dcm"
         frames_dir = instance_dir / "frames"
 
@@ -77,8 +69,7 @@ class FrameCache:
             cached_frames = sorted(frames_dir.glob("*.raw"))
             if cached_frames:
                 logger.debug(
-                    f"Using cached frames for {instance_uid} "
-                    f"({len(cached_frames)} frames)"
+                    f"Using cached frames for {instance_uid} " f"({len(cached_frames)} frames)"
                 )
                 return cached_frames
             # Empty frames directory - likely from failed extraction.
@@ -94,11 +85,7 @@ class FrameCache:
             raise ValueError(f"Failed to extract frames: {e}") from e
 
     def get_frame(
-        self,
-        study_uid: str,
-        series_uid: str,
-        instance_uid: str,
-        frame_number: int
+        self, study_uid: str, series_uid: str, instance_uid: str, frame_number: int
     ) -> Path:
         """
         Get specific frame by number.
@@ -119,8 +106,7 @@ class FrameCache:
 
         if frame_number < 1 or frame_number > len(frames):
             raise ValueError(
-                f"Frame {frame_number} out of range "
-                f"(instance has {len(frames)} frames)"
+                f"Frame {frame_number} out of range " f"(instance has {len(frames)} frames)"
             )
 
         return frames[frame_number - 1]

@@ -1,11 +1,11 @@
 """Tests for event provider configuration."""
 
-import pytest
 import json
+
+import pytest
 
 from app.services.events.config import load_providers_from_config
 from app.services.events.providers import (
-
     AzureStorageQueueProvider,
     FileEventProvider,
     InMemoryEventProvider,

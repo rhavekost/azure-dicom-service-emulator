@@ -1,6 +1,7 @@
 """Generate sample DICOM files for testing."""
 
 from pathlib import Path
+
 from .factories import DicomFactory
 
 
@@ -103,6 +104,7 @@ def create_fixture_files():
 
     # Implicit VR Little Endian
     from pydicom.uid import ImplicitVRLittleEndian
+
     implicit_vr = DicomFactory.create_ct_image(
         patient_id="EDGE-004",
         patient_name="Edge^ImplicitVR",
@@ -116,21 +118,15 @@ def create_fixture_files():
     invalid_dir.mkdir(parents=True, exist_ok=True)
 
     # Missing SOPInstanceUID
-    missing_sop = DicomFactory.create_invalid_dicom(
-        missing_tags=["SOPInstanceUID"]
-    )
+    missing_sop = DicomFactory.create_invalid_dicom(missing_tags=["SOPInstanceUID"])
     (invalid_dir / "missing_sop_uid.dcm").write_bytes(missing_sop)
 
     # Missing StudyInstanceUID
-    missing_study = DicomFactory.create_invalid_dicom(
-        missing_tags=["StudyInstanceUID"]
-    )
+    missing_study = DicomFactory.create_invalid_dicom(missing_tags=["StudyInstanceUID"])
     (invalid_dir / "missing_study_uid.dcm").write_bytes(missing_study)
 
     # Missing PatientID
-    missing_patient = DicomFactory.create_invalid_dicom(
-        missing_tags=["PatientID"]
-    )
+    missing_patient = DicomFactory.create_invalid_dicom(missing_tags=["PatientID"])
     (invalid_dir / "missing_patient_id.dcm").write_bytes(missing_patient)
 
     print(f"✅ Created {len(list(valid_dir.glob('*.dcm')))} valid DICOM files")

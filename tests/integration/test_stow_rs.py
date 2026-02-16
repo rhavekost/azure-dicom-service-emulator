@@ -1,20 +1,21 @@
 """Integration tests for PUT STOW-RS endpoint (Phase 3)."""
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-import pydicom
-from pydicom.dataset import Dataset
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from pathlib import Path
+
+import pydicom
+import pytest
+from pydicom.dataset import Dataset
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomInstance, DicomStudy
-from app.services.upsert import upsert_instance
 from app.services.dicom_engine import (
     dataset_to_dicom_json,
     extract_searchable_metadata,
 )
+from app.services.upsert import upsert_instance
 
 pytestmark = pytest.mark.integration
 
@@ -115,7 +116,7 @@ async def test_put_creates_new_instance(db_session, storage_dir):
             "sop_class_uid": str(ds.SOPClassUID),
             "transfer_syntax_uid": str(ds.file_meta.TransferSyntaxUID),
             **searchable,
-        }
+        },
     }
 
     # Upsert instance
@@ -150,7 +151,9 @@ async def test_put_replaces_existing_instance(db_session, storage_dir):
     sop_uid = "1.2.999.2.1.1"
 
     # Create initial instance
-    dicom_bytes_v1, ds_v1 = create_synthetic_dicom(study_uid, series_uid, sop_uid, "PUT_TEST_002_V1")
+    dicom_bytes_v1, ds_v1 = create_synthetic_dicom(
+        study_uid, series_uid, sop_uid, "PUT_TEST_002_V1"
+    )
     dicom_json_v1 = dataset_to_dicom_json(ds_v1)
     searchable_v1 = extract_searchable_metadata(ds_v1)
 
@@ -161,7 +164,7 @@ async def test_put_replaces_existing_instance(db_session, storage_dir):
             "sop_class_uid": str(ds_v1.SOPClassUID),
             "transfer_syntax_uid": str(ds_v1.file_meta.TransferSyntaxUID),
             **searchable_v1,
-        }
+        },
     }
 
     action1 = await upsert_instance(
@@ -178,7 +181,9 @@ async def test_put_replaces_existing_instance(db_session, storage_dir):
     initial_file_path = instance_v1.file_path
 
     # Update the instance (same UIDs, different patient ID)
-    dicom_bytes_v2, ds_v2 = create_synthetic_dicom(study_uid, series_uid, sop_uid, "PUT_TEST_002_V2")
+    dicom_bytes_v2, ds_v2 = create_synthetic_dicom(
+        study_uid, series_uid, sop_uid, "PUT_TEST_002_V2"
+    )
     dicom_json_v2 = dataset_to_dicom_json(ds_v2)
     searchable_v2 = extract_searchable_metadata(ds_v2)
 
@@ -189,7 +194,7 @@ async def test_put_replaces_existing_instance(db_session, storage_dir):
             "sop_class_uid": str(ds_v2.SOPClassUID),
             "transfer_syntax_uid": str(ds_v2.file_meta.TransferSyntaxUID),
             **searchable_v2,
-        }
+        },
     }
 
     action2 = await upsert_instance(
@@ -233,7 +238,7 @@ async def test_put_with_expiry_creates_study(db_session, storage_dir):
             "sop_class_uid": str(ds.SOPClassUID),
             "transfer_syntax_uid": str(ds.file_meta.TransferSyntaxUID),
             **searchable,
-        }
+        },
     }
 
     # Upsert instance
@@ -296,7 +301,7 @@ async def test_put_updates_existing_study_expiry(db_session, storage_dir):
             "sop_class_uid": str(ds.SOPClassUID),
             "transfer_syntax_uid": str(ds.file_meta.TransferSyntaxUID),
             **searchable,
-        }
+        },
     }
 
     await upsert_instance(db_session, study_uid, series_uid, sop_uid, dcm_data, storage_dir)
@@ -347,7 +352,7 @@ async def test_upsert_no_duplicate_instances(db_session, storage_dir):
                 "sop_class_uid": str(ds.SOPClassUID),
                 "transfer_syntax_uid": str(ds.file_meta.TransferSyntaxUID),
                 **searchable,
-            }
+            },
         }
 
         await upsert_instance(db_session, study_uid, series_uid, sop_uid, dcm_data, storage_dir)

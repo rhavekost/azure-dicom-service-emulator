@@ -4,8 +4,8 @@ These tests verify that UID list matching works through the QIDO-RS endpoints.
 """
 
 import pytest
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomInstance
 
@@ -21,6 +21,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -154,6 +155,7 @@ async def test_study_uid_single_exact_match(db_session):
     # Check if param should be parsed as list
     if "," in uid_param or "\\" in uid_param:
         from app.services.search_utils import parse_uid_list
+
         uids = parse_uid_list(uid_param)
         query = select(DicomInstance).where(DicomInstance.study_instance_uid.in_(uids))
     else:
@@ -181,9 +183,15 @@ async def test_series_uid_list_filter_comma_separated(db_session):
     series2_uid = "1.2.840.113619.2.1.2.2"
     series3_uid = "1.2.840.113619.2.1.2.3"
 
-    inst1 = await create_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid)
-    inst2 = await create_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid)
-    inst3 = await create_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series3_uid)
+    inst1 = await create_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid
+    )
+    inst2 = await create_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid
+    )
+    inst3 = await create_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series3_uid
+    )
 
     from app.services.search_utils import parse_uid_list
 
@@ -223,9 +231,15 @@ async def test_sop_uid_list_filter_comma_separated(db_session):
     sop2_uid = "1.2.840.113619.2.1.3.2"
     sop3_uid = "1.2.840.113619.2.1.3.3"
 
-    inst1 = await create_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series_uid, sop_uid=sop1_uid)
-    inst2 = await create_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series_uid, sop_uid=sop2_uid)
-    inst3 = await create_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series_uid, sop_uid=sop3_uid)
+    inst1 = await create_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series_uid, sop_uid=sop1_uid
+    )
+    inst2 = await create_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series_uid, sop_uid=sop2_uid
+    )
+    inst3 = await create_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series_uid, sop_uid=sop3_uid
+    )
 
     from app.services.search_utils import parse_uid_list
 

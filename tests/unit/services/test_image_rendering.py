@@ -1,21 +1,15 @@
 """Tests for image rendering service."""
 
-import pytest
 import io
-import numpy as np
-import pydicom
 from pathlib import Path
+
+import numpy as np
+import pytest
 from PIL import Image
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import ExplicitVRLittleEndian
-from datetime import datetime
 
-from app.services.image_rendering import (
-
-    render_frame,
-    apply_windowing,
-    normalize_to_uint8
-)
+from app.services.image_rendering import apply_windowing, normalize_to_uint8, render_frame
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +19,7 @@ def create_test_dicom(
     multi_frame: bool = False,
     with_windowing: bool = False,
     rgb: bool = False,
-    multi_window: bool = False
+    multi_window: bool = False,
 ) -> Path:
     """Create a synthetic DICOM file for testing."""
     file_path = tmp_path / "test.dcm"
@@ -36,12 +30,7 @@ def create_test_dicom(
     file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
     file_meta.MediaStorageSOPInstanceUID = "1.2.3.4.5.6.7.8.9"
 
-    ds = FileDataset(
-        str(file_path),
-        {},
-        file_meta=file_meta,
-        preamble=b"\0" * 128
-    )
+    ds = FileDataset(str(file_path), {}, file_meta=file_meta, preamble=b"\0" * 128)
 
     # Required DICOM attributes
     ds.SOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
@@ -70,7 +59,7 @@ def create_test_dicom(
         pixel_array = np.zeros((64, 64, 3), dtype=np.uint8)
         pixel_array[:, :, 0] = 255  # Red channel
         pixel_array[:, :, 1] = 128  # Green channel
-        pixel_array[:, :, 2] = 64   # Blue channel
+        pixel_array[:, :, 2] = 64  # Blue channel
     else:
         # Grayscale image
         ds.BitsAllocated = 16

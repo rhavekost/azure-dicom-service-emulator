@@ -1,14 +1,15 @@
 """Test fixtures for Azure DICOM Service Emulator."""
 
-import pytest
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi.testclient import TestClient
+
+import pytest
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
-from app.routers import dicomweb, changefeed, extended_query_tags, operations, debug, ups
+from app.routers import changefeed, debug, dicomweb, extended_query_tags, operations, ups
 from tests.fixtures.factories import DicomFactory
 
 
@@ -19,14 +20,9 @@ def client(tmp_path):
     # Create test database engine
     db_path = tmp_path / "test.db"
     test_engine = create_async_engine(
-        f"sqlite+aiosqlite:///{db_path}",
-        connect_args={"check_same_thread": False}
+        f"sqlite+aiosqlite:///{db_path}", connect_args={"check_same_thread": False}
     )
-    TestSessionLocal = async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False
-    )
+    TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Override get_db dependency
     async def override_get_db():
@@ -113,17 +109,13 @@ def sample_multiframe_dicom():
 @pytest.fixture
 def invalid_dicom_missing_sop():
     """Returns invalid DICOM missing SOPInstanceUID."""
-    return DicomFactory.create_invalid_dicom(
-        missing_tags=["SOPInstanceUID"]
-    )
+    return DicomFactory.create_invalid_dicom(missing_tags=["SOPInstanceUID"])
 
 
 @pytest.fixture
 def invalid_dicom_missing_study():
     """Returns invalid DICOM missing StudyInstanceUID."""
-    return DicomFactory.create_invalid_dicom(
-        missing_tags=["StudyInstanceUID"]
-    )
+    return DicomFactory.create_invalid_dicom(missing_tags=["StudyInstanceUID"])
 
 
 @pytest.fixture

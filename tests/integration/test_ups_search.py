@@ -1,10 +1,10 @@
-
 """Tests for UPS-RS search workitems endpoint (Phase 5, Task 8)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_search_all_workitems(client: TestClient):
     """Search with no filters returns all workitems."""
@@ -114,7 +114,7 @@ def test_search_workitems_by_state(client: TestClient):
     # Claim workitem 2 (move to IN PROGRESS)
     state_change = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}
+        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]},
     }
     client.put(f"/v2/workitems/{workitem_2}/state", json=state_change)
 
@@ -152,14 +152,13 @@ def test_search_workitems_with_multiple_filters(client: TestClient):
     # Claim workitem 1 (different state)
     state_change = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}
+        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]},
     }
     client.put(f"/v2/workitems/{workitem_1}/state", json=state_change)
 
     # Search by patient ID AND state
     response = client.get(
-        "/v2/workitems",
-        params={"PatientID": "PAT999", "ProcedureStepState": "SCHEDULED"}
+        "/v2/workitems", params={"PatientID": "PAT999", "ProcedureStepState": "SCHEDULED"}
     )
 
     assert response.status_code == 200
@@ -228,7 +227,7 @@ def test_search_workitems_transaction_uid_not_exposed(client: TestClient):
     # Claim workitem
     state_change = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": ["1.2.3.secret.txn"]}
+        "00081195": {"vr": "UI", "Value": ["1.2.3.secret.txn"]},
     }
     client.put(f"/v2/workitems/{workitem_uid}/state", json=state_change)
 

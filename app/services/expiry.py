@@ -9,11 +9,11 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dicom import DicomStudy, DicomInstance
-
+from app.models.dicom import DicomInstance, DicomStudy
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,7 @@ async def get_expired_studies(db: AsyncSession) -> list[DicomStudy]:
     now = datetime.now(timezone.utc)
 
     stmt = select(DicomStudy).where(
-        DicomStudy.expires_at.is_not(None),
-        DicomStudy.expires_at <= now
+        DicomStudy.expires_at.is_not(None), DicomStudy.expires_at <= now
     )
 
     result = await db.execute(stmt)
@@ -64,9 +63,7 @@ async def delete_expired_studies(db: AsyncSession, storage_dir: str) -> int:
             count += 1
             logger.info(f"Deleted expired study: {study.study_instance_uid}")
         except Exception as e:
-            logger.error(
-                f"Failed to delete expired study {study.study_instance_uid}: {e}"
-            )
+            logger.error(f"Failed to delete expired study {study.study_instance_uid}: {e}")
 
     logger.info(f"Deleted {count} expired studies")
     return count
@@ -84,15 +81,11 @@ async def delete_study(db: AsyncSession, study_uid: str, storage_dir: str) -> No
         storage_dir: Base directory for DICOM file storage
     """
     # Delete all instances for this study
-    stmt = sql_delete(DicomInstance).where(
-        DicomInstance.study_instance_uid == study_uid
-    )
+    stmt = sql_delete(DicomInstance).where(DicomInstance.study_instance_uid == study_uid)
     await db.execute(stmt)
 
     # Delete the study
-    stmt = sql_delete(DicomStudy).where(
-        DicomStudy.study_instance_uid == study_uid
-    )
+    stmt = sql_delete(DicomStudy).where(DicomStudy.study_instance_uid == study_uid)
     await db.execute(stmt)
 
     await db.commit()

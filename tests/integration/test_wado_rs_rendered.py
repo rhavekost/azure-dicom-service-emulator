@@ -1,9 +1,8 @@
 import pytest
-import io
-from PIL import Image
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_render_instance_jpeg(client: TestClient):
     """Render entire instance as JPEG."""

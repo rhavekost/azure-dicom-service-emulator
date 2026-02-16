@@ -1,7 +1,7 @@
 # Test Suite Audit Report
 
-**Date**: 2026-02-15  
-**Project**: Azure DICOM Service Emulator  
+**Date**: 2026-02-15
+**Project**: Azure DICOM Service Emulator
 **Auditor**: QA Expert (Claude Sonnet 4.5)
 
 ---
@@ -151,7 +151,7 @@
 
 **Total to Delete**: 2 files, 7 skipped tests
 
-**Rationale**: 
+**Rationale**:
 - All tests are marked `pytest.skip()` with message "Requires DICOM test data - will implement after endpoint exists"
 - Functionality is already tested in:
   - `test_frame_extraction.py` (5 tests, all passing)
@@ -347,8 +347,8 @@ Based on gap analysis below.
   - Instance deletion
   - Cascade behavior
 
-**Impact**: Main API surface has minimal integration test coverage  
-**Priority**: CRITICAL  
+**Impact**: Main API surface has minimal integration test coverage
+**Priority**: CRITICAL
 **Recommended Action**: Tasks 10-11 (Integration & E2E tests)
 
 #### 2. Multipart Handling (13.89% coverage)
@@ -359,8 +359,8 @@ Based on gap analysis below.
 - Content-Type parsing
 - Error handling for malformed multipart
 
-**Impact**: STOW-RS cannot be reliably tested without multipart parsing  
-**Priority**: CRITICAL  
+**Impact**: STOW-RS cannot be reliably tested without multipart parsing
+**Priority**: CRITICAL
 **Recommended Action**: Task 10 (add unit tests for multipart service)
 
 #### 3. Change Feed API (41.38% coverage)
@@ -371,8 +371,8 @@ Based on gap analysis below.
 - Pagination
 - Latest sequence endpoint
 
-**Impact**: Azure-specific feature not validated  
-**Priority**: HIGH  
+**Impact**: Azure-specific feature not validated
+**Priority**: HIGH
 **Recommended Action**: Task 11
 
 #### 4. Extended Query Tags (40.00% coverage)
@@ -383,8 +383,8 @@ Based on gap analysis below.
 - Tag reindexing operation
 - Error handling
 
-**Impact**: Azure-specific feature not validated  
-**Priority**: HIGH  
+**Impact**: Azure-specific feature not validated
+**Priority**: HIGH
 **Recommended Action**: Task 11
 
 ### Medium Priority Gaps
@@ -396,7 +396,7 @@ Based on gap analysis below.
 - Large dataset handling
 - Metadata extraction edge cases
 
-**Priority**: MEDIUM  
+**Priority**: MEDIUM
 **Recommended Action**: Task 10 (expand unit tests)
 
 #### 6. Event Manager (65.22% coverage)
@@ -405,7 +405,7 @@ Based on gap analysis below.
 - Provider failure scenarios
 - Batch publishing edge cases
 
-**Priority**: MEDIUM  
+**Priority**: MEDIUM
 **Recommended Action**: Task 10
 
 ### Low Priority Gaps
@@ -413,7 +413,7 @@ Based on gap analysis below.
 #### 7. Debug Endpoints (24.14% coverage)
 **Missing Tests**: Integration tests for debug router
 
-**Priority**: LOW (debug-only endpoints)  
+**Priority**: LOW (debug-only endpoints)
 **Recommended Action**: Optional, low priority
 
 ---

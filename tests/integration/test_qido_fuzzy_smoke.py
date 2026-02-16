@@ -6,12 +6,11 @@ build_fuzzy_name_filter() without requiring full end-to-end API testing.
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from starlette.datastructures import QueryParams
 
 from app.models.dicom import DicomInstance
 from app.routers.dicomweb import _parse_qido_params
-from app.services.dicom_engine import extract_searchable_metadata, dataset_to_dicom_json
 
 pytestmark = pytest.mark.integration
 
@@ -25,6 +24,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -37,7 +37,9 @@ async def db_session(tmp_path):
     await engine.dispose()
 
 
-async def create_test_instance(db_session: AsyncSession, patient_name: str, study_uid: str) -> DicomInstance:
+async def create_test_instance(
+    db_session: AsyncSession, patient_name: str, study_uid: str
+) -> DicomInstance:
     """Create a test DICOM instance in the database."""
     instance = DicomInstance(
         study_instance_uid=study_uid,
@@ -78,6 +80,7 @@ async def test_parse_qido_params_with_fuzzy_matching(db_session):
 
     # Apply filters to query
     from sqlalchemy import and_
+
     query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
     result = await db_session.execute(query)
     instances = result.scalars().all()
@@ -108,6 +111,7 @@ async def test_parse_qido_params_without_fuzzy_matching(db_session):
 
     # Apply filters to query
     from sqlalchemy import and_
+
     query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
     result = await db_session.execute(query)
     instances = result.scalars().all()
@@ -134,6 +138,7 @@ async def test_parse_qido_params_wildcard_takes_precedence(db_session):
 
     # Apply filters to query
     from sqlalchemy import and_
+
     query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
     result = await db_session.execute(query)
     instances = result.scalars().all()
@@ -162,6 +167,7 @@ async def test_parse_qido_params_multiple_word_fuzzy(db_session):
 
     # Apply filters to query
     from sqlalchemy import and_
+
     query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
     result = await db_session.execute(query)
     instances = result.scalars().all()

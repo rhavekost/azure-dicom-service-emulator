@@ -66,7 +66,16 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
-ignore = ["E501"]  # Line too long (handled by formatter)
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+    "N803",  # Argument name should be lowercase (DICOM params must be PascalCase)
+    "N806",  # Variable in function should be lowercase (test fixtures often use PascalCase)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "F841",  # Local variable assigned but never used (common in test setup)
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -1,14 +1,14 @@
-
 """Tests for expiry service (Phase 3, Task 4)."""
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from app.models.dicom import DicomStudy, DicomInstance
-from app.services.expiry import get_expired_studies, delete_expired_studies, delete_study
+import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.models.dicom import DicomInstance, DicomStudy
+from app.services.expiry import delete_expired_studies, delete_study, get_expired_studies
 
 pytestmark = pytest.mark.unit
 
@@ -22,7 +22,6 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
-
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

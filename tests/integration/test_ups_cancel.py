@@ -1,10 +1,10 @@
-
 """Tests for UPS-RS cancel request endpoint (Phase 5, Task 7)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_cancel_scheduled_workitem(client: TestClient):
     """Cancel SCHEDULED workitem via cancelrequest."""
@@ -42,7 +42,7 @@ def test_cannot_cancel_in_progress_workitem(client: TestClient):
     # Claim workitem (SCHEDULED → IN PROGRESS)
     state_change = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}
+        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=state_change)
     assert response.status_code == 200
@@ -70,7 +70,7 @@ def test_cannot_cancel_completed_workitem(client: TestClient):
     txn_uid = "1.2.3.txn.302"
     claim_payload = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=claim_payload)
     assert response.status_code == 200
@@ -78,7 +78,7 @@ def test_cannot_cancel_completed_workitem(client: TestClient):
     # Complete workitem
     complete_payload = {
         "00741000": {"vr": "CS", "Value": ["COMPLETED"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=complete_payload)
     assert response.status_code == 200

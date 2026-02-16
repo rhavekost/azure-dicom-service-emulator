@@ -1,8 +1,9 @@
 """Tests for event data models."""
 
-import pytest
 from datetime import datetime, timezone
 from uuid import UUID
+
+import pytest
 
 from app.models.events import DicomEvent
 

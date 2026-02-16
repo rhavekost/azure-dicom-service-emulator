@@ -1,9 +1,10 @@
 """Tests for Workitem model (Phase 5, Task 1)."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import Workitem
 
@@ -19,7 +20,7 @@ def test_workitem_creation():
             "00080005": {"vr": "CS", "Value": ["ISO_IR 100"]},
             "00080016": {"vr": "UI", "Value": ["1.2.840.10008.5.1.4.34.5"]},
             "00080018": {"vr": "UI", "Value": ["1.2.840.10008.5.1.4.34.5.1"]},
-        }
+        },
     )
 
     assert workitem.sop_instance_uid == "1.2.840.10008.5.1.4.34.5.1"
@@ -37,7 +38,7 @@ def test_workitem_state_values():
         workitem = Workitem(
             sop_instance_uid=f"1.2.3.{state}",
             procedure_step_state=state,
-            dicom_dataset={"test": "data"}
+            dicom_dataset={"test": "data"},
         )
         assert workitem.procedure_step_state == state
 
@@ -48,7 +49,7 @@ def test_workitem_with_transaction_uid():
         sop_instance_uid="1.2.840.10008.5.1.4.34.5.1",
         transaction_uid="1.2.840.10008.1.2.3.4.5",
         procedure_step_state="IN PROGRESS",
-        dicom_dataset={"test": "data"}
+        dicom_dataset={"test": "data"},
     )
 
     assert workitem.sop_instance_uid == "1.2.840.10008.5.1.4.34.5.1"
@@ -63,7 +64,7 @@ def test_workitem_with_patient_info():
         procedure_step_state="SCHEDULED",
         patient_name="Doe^John",
         patient_id="PAT12345",
-        dicom_dataset={"test": "data"}
+        dicom_dataset={"test": "data"},
     )
 
     assert workitem.patient_name == "Doe^John"
@@ -81,7 +82,7 @@ def test_workitem_with_scheduling():
         study_instance_uid="1.2.840.113619.2.1.1.1",
         accession_number="ACC12345",
         requested_procedure_id="RP001",
-        dicom_dataset={"test": "data"}
+        dicom_dataset={"test": "data"},
     )
 
     assert workitem.scheduled_procedure_step_start_datetime == scheduled_time
@@ -98,7 +99,7 @@ def test_workitem_with_station_codes():
         scheduled_station_name_code="CT01",
         scheduled_station_class_code="CT_SCANNER",
         scheduled_station_geo_code="RADIOLOGY_DEPT_A",
-        dicom_dataset={"test": "data"}
+        dicom_dataset={"test": "data"},
     )
 
     assert workitem.scheduled_station_name_code == "CT01"
@@ -114,13 +115,14 @@ def test_workitem_default_state():
     workitem = Workitem(
         sop_instance_uid="1.2.840.10008.5.1.4.34.5.1",
         procedure_step_state="SCHEDULED",  # Explicitly set the default
-        dicom_dataset={"test": "data"}
+        dicom_dataset={"test": "data"},
     )
 
     assert workitem.procedure_step_state == "SCHEDULED"
 
 
 # Database integration test fixtures and tests
+
 
 @pytest.fixture
 async def db_session(tmp_path):
@@ -130,6 +132,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -172,7 +175,7 @@ async def test_workitem_database_persistence(db_session):
             "00080005": {"vr": "CS", "Value": ["ISO_IR 100"]},
             "00080016": {"vr": "UI", "Value": ["1.2.840.10008.5.1.4.34.5"]},
             "00080018": {"vr": "UI", "Value": ["1.2.840.10008.5.1.4.34.5.1"]},
-        }
+        },
     )
     db_session.add(workitem)
     await db_session.commit()
@@ -212,28 +215,26 @@ async def test_workitem_query_by_patient_id(db_session):
         sop_instance_uid="1.2.3.1",
         procedure_step_state="SCHEDULED",
         patient_id="PAT001",
-        dicom_dataset={"test": "data1"}
+        dicom_dataset={"test": "data1"},
     )
     workitem2 = Workitem(
         sop_instance_uid="1.2.3.2",
         procedure_step_state="IN PROGRESS",
         patient_id="PAT001",
-        dicom_dataset={"test": "data2"}
+        dicom_dataset={"test": "data2"},
     )
     workitem3 = Workitem(
         sop_instance_uid="1.2.3.3",
         procedure_step_state="SCHEDULED",
         patient_id="PAT002",
-        dicom_dataset={"test": "data3"}
+        dicom_dataset={"test": "data3"},
     )
 
     db_session.add_all([workitem1, workitem2, workitem3])
     await db_session.commit()
 
     # Query by patient_id
-    result = await db_session.execute(
-        select(Workitem).where(Workitem.patient_id == "PAT001")
-    )
+    result = await db_session.execute(select(Workitem).where(Workitem.patient_id == "PAT001"))
     workitems = result.scalars().all()
 
     assert len(workitems) == 2
@@ -247,17 +248,17 @@ async def test_workitem_query_by_state(db_session):
     workitem1 = Workitem(
         sop_instance_uid="1.2.3.1",
         procedure_step_state="SCHEDULED",
-        dicom_dataset={"test": "data1"}
+        dicom_dataset={"test": "data1"},
     )
     workitem2 = Workitem(
         sop_instance_uid="1.2.3.2",
         procedure_step_state="SCHEDULED",
-        dicom_dataset={"test": "data2"}
+        dicom_dataset={"test": "data2"},
     )
     workitem3 = Workitem(
         sop_instance_uid="1.2.3.3",
         procedure_step_state="COMPLETED",
-        dicom_dataset={"test": "data3"}
+        dicom_dataset={"test": "data3"},
     )
 
     db_session.add_all([workitem1, workitem2, workitem3])
@@ -281,22 +282,20 @@ async def test_workitem_query_by_accession_number(db_session):
         sop_instance_uid="1.2.3.1",
         procedure_step_state="SCHEDULED",
         accession_number="ACC001",
-        dicom_dataset={"test": "data1"}
+        dicom_dataset={"test": "data1"},
     )
     workitem2 = Workitem(
         sop_instance_uid="1.2.3.2",
         procedure_step_state="IN PROGRESS",
         accession_number="ACC002",
-        dicom_dataset={"test": "data2"}
+        dicom_dataset={"test": "data2"},
     )
 
     db_session.add_all([workitem1, workitem2])
     await db_session.commit()
 
     # Query by accession_number
-    result = await db_session.execute(
-        select(Workitem).where(Workitem.accession_number == "ACC001")
-    )
+    result = await db_session.execute(select(Workitem).where(Workitem.accession_number == "ACC001"))
     workitem = result.scalar_one_or_none()
 
     assert workitem is not None
@@ -312,19 +311,19 @@ async def test_workitem_composite_query_state_patient(db_session):
         sop_instance_uid="1.2.3.1",
         procedure_step_state="SCHEDULED",
         patient_id="PAT001",
-        dicom_dataset={"test": "data1"}
+        dicom_dataset={"test": "data1"},
     )
     workitem2 = Workitem(
         sop_instance_uid="1.2.3.2",
         procedure_step_state="SCHEDULED",
         patient_id="PAT002",
-        dicom_dataset={"test": "data2"}
+        dicom_dataset={"test": "data2"},
     )
     workitem3 = Workitem(
         sop_instance_uid="1.2.3.3",
         procedure_step_state="IN PROGRESS",
         patient_id="PAT001",
-        dicom_dataset={"test": "data3"}
+        dicom_dataset={"test": "data3"},
     )
 
     db_session.add_all([workitem1, workitem2, workitem3])
@@ -333,8 +332,7 @@ async def test_workitem_composite_query_state_patient(db_session):
     # Query by state and patient_id (common query pattern)
     result = await db_session.execute(
         select(Workitem).where(
-            Workitem.procedure_step_state == "SCHEDULED",
-            Workitem.patient_id == "PAT001"
+            Workitem.procedure_step_state == "SCHEDULED", Workitem.patient_id == "PAT001"
         )
     )
     workitems = result.scalars().all()

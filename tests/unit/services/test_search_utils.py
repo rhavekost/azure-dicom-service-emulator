@@ -5,7 +5,6 @@ from sqlalchemy import Column, String
 from sqlalchemy.sql.expression import BooleanClauseList, ColumnElement
 
 from app.services.search_utils import (
-
     build_fuzzy_name_filter,
     parse_uid_list,
     translate_wildcards,

@@ -1,10 +1,10 @@
-
 """Tests for UPS-RS change state endpoint (Phase 5, Task 6)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_claim_workitem_scheduled_to_in_progress(client: TestClient):
     """Claim SCHEDULED workitem (SCHEDULED → IN PROGRESS)."""
@@ -20,7 +20,7 @@ def test_claim_workitem_scheduled_to_in_progress(client: TestClient):
     # Claim workitem
     state_change = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}
+        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=state_change)
     assert response.status_code == 200
@@ -48,7 +48,7 @@ def test_complete_workitem_in_progress_to_completed(client: TestClient):
     txn_uid = "1.2.3.txn.201"
     claim_payload = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=claim_payload)
     assert response.status_code == 200
@@ -56,7 +56,7 @@ def test_complete_workitem_in_progress_to_completed(client: TestClient):
     # Complete workitem
     complete_payload = {
         "00741000": {"vr": "CS", "Value": ["COMPLETED"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=complete_payload)
     assert response.status_code == 200
@@ -82,7 +82,7 @@ def test_cannot_complete_with_wrong_txn_uid(client: TestClient):
     txn_uid = "1.2.3.txn.202"
     claim_payload = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=claim_payload)
     assert response.status_code == 200
@@ -91,7 +91,7 @@ def test_cannot_complete_with_wrong_txn_uid(client: TestClient):
     wrong_uid = "wrong-uid"
     complete_payload = {
         "00741000": {"vr": "CS", "Value": ["COMPLETED"]},
-        "00081195": {"vr": "UI", "Value": [wrong_uid]}
+        "00081195": {"vr": "UI", "Value": [wrong_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=complete_payload)
     assert response.status_code == 400
@@ -133,7 +133,7 @@ def test_cannot_transition_from_completed(client: TestClient):
     txn_uid = "1.2.3.txn.204"
     claim_payload = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=claim_payload)
     assert response.status_code == 200
@@ -141,7 +141,7 @@ def test_cannot_transition_from_completed(client: TestClient):
     # Complete workitem
     complete_payload = {
         "00741000": {"vr": "CS", "Value": ["COMPLETED"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=complete_payload)
     assert response.status_code == 200
@@ -149,7 +149,7 @@ def test_cannot_transition_from_completed(client: TestClient):
     # Try to transition from COMPLETED (should fail)
     invalid_payload = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": [txn_uid]}
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=invalid_payload)
     assert response.status_code == 400
@@ -161,7 +161,7 @@ def test_state_change_nonexistent_workitem(client: TestClient):
     workitem_uid = "1.2.3.4.5.999"
     state_change = {
         "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
-        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}
+        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]},
     }
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=state_change)
     assert response.status_code == 404
@@ -180,9 +180,7 @@ def test_missing_state_in_payload(client: TestClient):
     assert response.status_code == 201
 
     # Try to change state without ProcedureStepState
-    invalid_payload = {
-        "00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}
-    }
+    invalid_payload = {"00081195": {"vr": "UI", "Value": ["1.2.3.txn"]}}
     response = client.put(f"/v2/workitems/{workitem_uid}/state", json=invalid_payload)
     assert response.status_code == 400
     assert "ProcedureStepState" in response.json()["detail"]

@@ -53,7 +53,7 @@ def load_providers_from_config() -> list[EventProvider]:
     elif isinstance(config, dict):
         provider_configs = config.get("providers", [])
     else:
-        logger.error(f"EVENT_PROVIDERS must be a JSON array or object with 'providers' key")
+        logger.error("EVENT_PROVIDERS must be a JSON array or object with 'providers' key")
         return providers
 
     if not provider_configs:
@@ -122,9 +122,7 @@ def _create_provider(provider_type: str, config: dict[str, any]) -> EventProvide
                 "Azure Storage Queue provider missing 'connection_string' or 'queue_name' configuration"
             )
             return None
-        return AzureStorageQueueProvider(
-            connection_string=connection_string, queue_name=queue_name
-        )
+        return AzureStorageQueueProvider(connection_string=connection_string, queue_name=queue_name)
 
     else:
         logger.warning(f"Unknown provider type: {provider_type}")

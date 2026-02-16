@@ -1,11 +1,10 @@
 """Azure Extended Query Tags API router."""
 
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -16,6 +15,7 @@ router = APIRouter()
 
 class ExtendedQueryTagInput(BaseModel):
     """Input model for creating extended query tags."""
+
     path: str
     vr: str
     private_creator: str | None = None
@@ -24,6 +24,7 @@ class ExtendedQueryTagInput(BaseModel):
 
 class ExtendedQueryTagsRequest(BaseModel):
     """Request body for adding extended query tags."""
+
     tags: list[ExtendedQueryTagInput]
 
 
@@ -75,10 +76,7 @@ async def add_extended_query_tags(
         )
         if existing.scalar_one_or_none():
             await db.rollback()
-            raise HTTPException(
-                status_code=409,
-                detail=f"Tag {tag_input.path} already exists"
-            )
+            raise HTTPException(status_code=409, detail=f"Tag {tag_input.path} already exists")
 
         tag = ExtendedQueryTag(
             path=tag_input.path,

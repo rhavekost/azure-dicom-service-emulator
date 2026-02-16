@@ -1,4 +1,3 @@
-
 """Tests for event provider base class."""
 
 import pytest
@@ -7,6 +6,7 @@ from app.models.events import DicomEvent
 from app.services.events.providers import EventProvider
 
 pytestmark = pytest.mark.unit
+
 
 class MockEventProvider(EventProvider):
     """Mock provider for testing."""
@@ -33,10 +33,7 @@ async def test_event_provider_abstract():
 async def test_mock_provider_publish():
     """Mock provider stores published events."""
     provider = MockEventProvider()
-    event = DicomEvent.from_instance_created(
-        "1.2.3", "4.5.6", "7.8.9", 1, "http://localhost"
-    )
-
+    event = DicomEvent.from_instance_created("1.2.3", "4.5.6", "7.8.9", 1, "http://localhost")
 
     await provider.publish(event)
 

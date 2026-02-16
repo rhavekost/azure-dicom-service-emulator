@@ -11,7 +11,6 @@ Usage:
 """
 
 import sys
-import json
 import uuid
 from io import BytesIO
 
@@ -19,7 +18,6 @@ import httpx
 import pydicom
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
-from pydicom.sequence import Sequence
 
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8080"
 
@@ -75,9 +73,10 @@ def test_stow_rs(dcm_bytes: bytes, study_uid: str):
     """Test STOW-RS store."""
     boundary = "boundary-test"
     body = (
-        f"--{boundary}\r\n"
-        f"Content-Type: application/dicom\r\n\r\n"
-    ).encode() + dcm_bytes + f"\r\n--{boundary}--\r\n".encode()
+        (f"--{boundary}\r\n" f"Content-Type: application/dicom\r\n\r\n").encode()
+        + dcm_bytes
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
 
     r = httpx.post(
         f"{BASE_URL}/v2/studies",
@@ -261,25 +260,18 @@ def test_advanced_search():
     try:
         # Fuzzy search
         r = httpx.get(
-            f"{BASE_URL}/v2/studies",
-            params={"PatientName": "test", "fuzzymatching": "true"}
+            f"{BASE_URL}/v2/studies", params={"PatientName": "test", "fuzzymatching": "true"}
         )
         assert r.status_code == 200, f"Fuzzy search failed: {r.status_code}"
         print("  [PASS] Fuzzy search")
 
         # Wildcard search
-        r = httpx.get(
-            f"{BASE_URL}/v2/studies",
-            params={"PatientID": "PAT*"}
-        )
+        r = httpx.get(f"{BASE_URL}/v2/studies", params={"PatientID": "PAT*"})
         assert r.status_code == 200, f"Wildcard search failed: {r.status_code}"
         print("  [PASS] Wildcard search")
 
         # UID list (using made-up UIDs)
-        r = httpx.get(
-            f"{BASE_URL}/v2/studies",
-            params={"StudyInstanceUID": "1.2.3,4.5.6"}
-        )
+        r = httpx.get(f"{BASE_URL}/v2/studies", params={"StudyInstanceUID": "1.2.3,4.5.6"})
         assert r.status_code == 200, f"UID list search failed: {r.status_code}"
         print("  [PASS] UID list search")
 
@@ -289,7 +281,7 @@ def test_advanced_search():
 
 def main():
     print(f"\n{'='*60}")
-    print(f"  Azure Healthcare Workspace Emulator - Smoke Test")
+    print("  Azure Healthcare Workspace Emulator - Smoke Test")
     print(f"  Target: {BASE_URL}")
     print(f"{'='*60}\n")
 

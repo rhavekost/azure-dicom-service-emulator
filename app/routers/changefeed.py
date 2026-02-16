@@ -30,11 +30,11 @@ async def get_change_feed(
 
     # Apply time filters if provided
     if start_time:
-        start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
         query = query.where(ChangeFeedEntry.timestamp >= start_dt)
 
     if end_time:
-        end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
         query = query.where(ChangeFeedEntry.timestamp <= end_dt)
 
     # Order by sequence and apply pagination

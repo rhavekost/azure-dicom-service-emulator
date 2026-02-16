@@ -1,10 +1,10 @@
-
 """Tests for UPS-RS create workitem endpoint (Phase 5, Task 3)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_create_workitem_post(client: TestClient):
     """Create workitem via POST."""
@@ -20,7 +20,7 @@ def test_create_workitem_post(client: TestClient):
     response = client.post(
         f"/v2/workitems?{workitem_uid}",
         json=payload,
-        headers={"Content-Type": "application/dicom+json"}
+        headers={"Content-Type": "application/dicom+json"},
     )
 
     assert response.status_code == 201

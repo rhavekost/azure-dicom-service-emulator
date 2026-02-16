@@ -4,10 +4,17 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Column, String, Integer, DateTime, Text, JSON, Boolean,
-    BigInteger, Index, UniqueConstraint,
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSON as PGJSON
+from sqlalchemy.dialects.postgresql import JSON as PGJSON
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -29,8 +36,11 @@ class DicomStudy(Base):
     )
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
 
 class DicomInstance(Base):
@@ -66,8 +76,11 @@ class DicomInstance(Base):
     file_size = Column(BigInteger)
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     __table_args__ = (
         Index("ix_study_series", "study_instance_uid", "series_instance_uid"),
@@ -89,9 +102,7 @@ class ChangeFeedEntry(Base):
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     dicom_metadata = Column(JSON, default=dict)
 
-    __table_args__ = (
-        Index("ix_changefeed_timestamp", "timestamp"),
-    )
+    __table_args__ = (Index("ix_changefeed_timestamp", "timestamp"),)
 
 
 class ExtendedQueryTag(Base):
@@ -139,8 +150,11 @@ class Operation(Base):
     status = Column(String(16), nullable=False, default="running")  # running, succeeded, failed
     percent_complete = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
     results = Column(JSON, default=dict)
     errors = Column(JSON, default=list)
 
@@ -153,90 +167,66 @@ class Workitem(Base):
     # Primary identifier
     sop_instance_uid: Mapped[str] = mapped_column(
         String(128),  # Fixed: Changed from 64 to 128 for consistency with other models
-        primary_key=True
+        primary_key=True,
     )
 
     # Ownership and state
     transaction_uid: Mapped[str | None] = mapped_column(
         String(128),  # Fixed: Changed from 64 to 128 for consistency with other models
-        nullable=True
+        nullable=True,
     )
     procedure_step_state: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="SCHEDULED",
-        index=True
+        String(20), nullable=False, default="SCHEDULED", index=True
     )
 
     # Patient information (for search)
-    patient_name: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True
-    )
-    patient_id: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True,
-        index=True
-    )
+    patient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    patient_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     # Study reference
     study_instance_uid: Mapped[str | None] = mapped_column(
         String(128),  # Fixed: Changed from 64 to 128 for consistency with other models
         nullable=True,
-        index=True
+        index=True,
     )
 
     # Scheduling
     scheduled_procedure_step_start_datetime: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-        index=True
+        DateTime(timezone=True), nullable=True, index=True
     )
 
     # Request references (for search)
     accession_number: Mapped[str | None] = mapped_column(
         String(64),
         nullable=True,
-        index=True  # Fixed: Added index for search performance
+        index=True,  # Fixed: Added index for search performance
     )
-    requested_procedure_id: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True
-    )
+    requested_procedure_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Station codes (for search)
-    scheduled_station_name_code: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True
-    )
-    scheduled_station_class_code: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True
-    )
-    scheduled_station_geo_code: Mapped[str | None] = mapped_column(
-        String(64),
-        nullable=True
-    )
+    scheduled_station_name_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scheduled_station_class_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scheduled_station_geo_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Full DICOM dataset (JSON)
-    dicom_dataset: Mapped[dict] = mapped_column(
-        PGJSON,
-        nullable=False
-    )
+    dicom_dataset: Mapped[dict] = mapped_column(PGJSON, nullable=False)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc)
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Composite indexes for common query patterns
     __table_args__ = (
         Index("ix_workitem_state_patient", "procedure_step_state", "patient_id"),
-        Index("ix_workitem_state_scheduled", "procedure_step_state", "scheduled_procedure_step_start_datetime"),
+        Index(
+            "ix_workitem_state_scheduled",
+            "procedure_step_state",
+            "scheduled_procedure_step_start_datetime",
+        ),
     )

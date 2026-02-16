@@ -3,11 +3,10 @@
 import pytest
 
 from app.services.ups_state_machine import (
-
-    StateTransitionError,
     VALID_STATES,
-    validate_state_transition,
+    StateTransitionError,
     can_update_workitem,
+    validate_state_transition,
 )
 
 pytestmark = pytest.mark.unit
@@ -27,7 +26,7 @@ def test_transition_scheduled_to_in_progress():
         current_state="SCHEDULED",
         new_state="IN PROGRESS",
         current_txn_uid=None,
-        provided_txn_uid="1.2.3.4.5"
+        provided_txn_uid="1.2.3.4.5",
     )
     # Should not raise
 
@@ -38,7 +37,7 @@ def test_transition_in_progress_to_completed():
         current_state="IN PROGRESS",
         new_state="COMPLETED",
         current_txn_uid="1.2.3.4.5",
-        provided_txn_uid="1.2.3.4.5"
+        provided_txn_uid="1.2.3.4.5",
     )
     # Should not raise
 
@@ -49,7 +48,7 @@ def test_transition_in_progress_to_canceled():
         current_state="IN PROGRESS",
         new_state="CANCELED",
         current_txn_uid="1.2.3.4.5",
-        provided_txn_uid="1.2.3.4.5"
+        provided_txn_uid="1.2.3.4.5",
     )
     # Should not raise
 
@@ -64,7 +63,7 @@ def test_transition_scheduled_to_in_progress_without_txn_uid():
             current_state="SCHEDULED",
             new_state="IN PROGRESS",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Transaction UID required to claim workitem" in str(exc_info.value)
 
@@ -76,7 +75,7 @@ def test_transition_in_progress_to_completed_without_txn_uid():
             current_state="IN PROGRESS",
             new_state="COMPLETED",
             current_txn_uid="1.2.3.4.5",
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Transaction UID required" in str(exc_info.value)
 
@@ -88,7 +87,7 @@ def test_transition_in_progress_to_completed_wrong_txn_uid():
             current_state="IN PROGRESS",
             new_state="COMPLETED",
             current_txn_uid="1.2.3.4.5",
-            provided_txn_uid="9.8.7.6.5"  # Different UID
+            provided_txn_uid="9.8.7.6.5",  # Different UID
         )
     assert "Transaction UID does not match" in str(exc_info.value)
     assert "owned by another process" in str(exc_info.value)
@@ -101,7 +100,7 @@ def test_transition_in_progress_to_canceled_without_txn_uid():
             current_state="IN PROGRESS",
             new_state="CANCELED",
             current_txn_uid="1.2.3.4.5",
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Transaction UID required" in str(exc_info.value)
 
@@ -113,7 +112,7 @@ def test_transition_in_progress_to_canceled_wrong_txn_uid():
             current_state="IN PROGRESS",
             new_state="CANCELED",
             current_txn_uid="1.2.3.4.5",
-            provided_txn_uid="9.8.7.6.5"  # Different UID
+            provided_txn_uid="9.8.7.6.5",  # Different UID
         )
     assert "Transaction UID does not match" in str(exc_info.value)
 
@@ -125,7 +124,7 @@ def test_transition_scheduled_to_canceled_fails():
             current_state="SCHEDULED",
             new_state="CANCELED",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Use /cancelrequest endpoint" in str(exc_info.value)
 
@@ -137,7 +136,7 @@ def test_transition_from_completed_fails():
             current_state="COMPLETED",
             new_state="IN PROGRESS",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Cannot transition from COMPLETED" in str(exc_info.value)
 
@@ -149,7 +148,7 @@ def test_transition_from_canceled_fails():
             current_state="CANCELED",
             new_state="SCHEDULED",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Cannot transition from CANCELED" in str(exc_info.value)
 
@@ -161,7 +160,7 @@ def test_transition_scheduled_to_completed_fails():
             current_state="SCHEDULED",
             new_state="COMPLETED",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Invalid state transition: SCHEDULED → COMPLETED" in str(exc_info.value)
 
@@ -173,7 +172,7 @@ def test_invalid_current_state():
             current_state="INVALID_STATE",
             new_state="SCHEDULED",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Invalid current state" in str(exc_info.value)
 
@@ -185,7 +184,7 @@ def test_invalid_new_state():
             current_state="SCHEDULED",
             new_state="INVALID_STATE",
             current_txn_uid=None,
-            provided_txn_uid=None
+            provided_txn_uid=None,
         )
     assert "Invalid new state" in str(exc_info.value)
 
@@ -196,9 +195,7 @@ def test_invalid_new_state():
 def test_can_update_scheduled_workitem():
     """Test SCHEDULED workitems can be updated without transaction UID."""
     result = can_update_workitem(
-        current_state="SCHEDULED",
-        current_txn_uid=None,
-        provided_txn_uid=None
+        current_state="SCHEDULED", current_txn_uid=None, provided_txn_uid=None
     )
     assert result is True
 
@@ -206,9 +203,7 @@ def test_can_update_scheduled_workitem():
 def test_can_update_in_progress_with_matching_txn_uid():
     """Test IN PROGRESS workitems can be updated with matching transaction UID."""
     result = can_update_workitem(
-        current_state="IN PROGRESS",
-        current_txn_uid="1.2.3.4.5",
-        provided_txn_uid="1.2.3.4.5"
+        current_state="IN PROGRESS", current_txn_uid="1.2.3.4.5", provided_txn_uid="1.2.3.4.5"
     )
     assert result is True
 
@@ -217,9 +212,7 @@ def test_cannot_update_in_progress_without_txn_uid():
     """Test IN PROGRESS workitems cannot be updated without transaction UID."""
     with pytest.raises(StateTransitionError) as exc_info:
         can_update_workitem(
-            current_state="IN PROGRESS",
-            current_txn_uid="1.2.3.4.5",
-            provided_txn_uid=None
+            current_state="IN PROGRESS", current_txn_uid="1.2.3.4.5", provided_txn_uid=None
         )
     assert "Transaction UID required" in str(exc_info.value)
 
@@ -230,7 +223,7 @@ def test_cannot_update_in_progress_with_wrong_txn_uid():
         can_update_workitem(
             current_state="IN PROGRESS",
             current_txn_uid="1.2.3.4.5",
-            provided_txn_uid="9.8.7.6.5"  # Different UID
+            provided_txn_uid="9.8.7.6.5",  # Different UID
         )
     assert "Transaction UID does not match" in str(exc_info.value)
 
@@ -238,20 +231,12 @@ def test_cannot_update_in_progress_with_wrong_txn_uid():
 def test_cannot_update_completed_workitem():
     """Test COMPLETED workitems cannot be updated."""
     with pytest.raises(StateTransitionError) as exc_info:
-        can_update_workitem(
-            current_state="COMPLETED",
-            current_txn_uid=None,
-            provided_txn_uid=None
-        )
+        can_update_workitem(current_state="COMPLETED", current_txn_uid=None, provided_txn_uid=None)
     assert "Cannot update workitem in COMPLETED state" in str(exc_info.value)
 
 
 def test_cannot_update_canceled_workitem():
     """Test CANCELED workitems cannot be updated."""
     with pytest.raises(StateTransitionError) as exc_info:
-        can_update_workitem(
-            current_state="CANCELED",
-            current_txn_uid=None,
-            provided_txn_uid=None
-        )
+        can_update_workitem(current_state="CANCELED", current_txn_uid=None, provided_txn_uid=None)
     assert "Cannot update workitem in CANCELED state" in str(exc_info.value)

@@ -1,10 +1,12 @@
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone, timedelta
+
 from app.services.frame_cache import FrameCache
 
 pytestmark = pytest.mark.unit
+
 
 def test_frame_cache_get_or_extract(tmp_path):
     """Get frames from cache or extract if not cached."""
@@ -29,7 +31,7 @@ def test_frame_cache_get_or_extract(tmp_path):
         fake_frame.write_bytes(b"fake_pixel_data")
         return [fake_frame]
 
-    with patch('app.services.frame_cache.extract_frames') as mock_extract_func:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract_func:
         mock_extract_func.side_effect = mock_extract
 
         # First call should extract
@@ -59,7 +61,7 @@ def test_frame_cache_uses_cached_frames(tmp_path):
     frame1 = frames_dir / "1.raw"
     frame1.write_bytes(b"cached")
 
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         # Should NOT call extract_frames
         frames = cache.get_or_extract(study_uid, series_uid, instance_uid)
 
@@ -128,7 +130,7 @@ def test_frame_cache_failed_extraction(tmp_path):
     dcm_path.write_text("fake")
 
     # Mock extract_frames to raise error
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         mock_extract.side_effect = ValueError("Cannot decode pixel data")
 
         # First attempt should fail and mark as failed
@@ -161,7 +163,7 @@ def test_frame_cache_retry_after_failure(tmp_path):
     dcm_path.write_text("fake")
 
     # Mock extract_frames to raise error
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         mock_extract.side_effect = ValueError("Cannot decode pixel data")
 
         # First attempt fails
@@ -192,7 +194,7 @@ def test_frame_cache_retry_after_ttl(tmp_path):
     dcm_path.write_text("fake")
 
     # Mock extract_frames to raise error initially
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         mock_extract.side_effect = ValueError("Cannot decode pixel data")
 
         # First attempt fails
@@ -215,7 +217,7 @@ def test_frame_cache_retry_after_ttl(tmp_path):
         fake_frame.write_bytes(b"fake_pixel_data")
         return [fake_frame]
 
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         mock_extract.side_effect = mock_extract_success
 
         # After TTL expiry, should retry and succeed
@@ -245,7 +247,7 @@ def test_frame_cache_configurable_ttl(tmp_path):
     dcm_path.write_text("fake")
 
     # Mock extract_frames to raise error
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         mock_extract.side_effect = ValueError("Cannot decode pixel data")
 
         # First attempt fails
@@ -265,7 +267,7 @@ def test_frame_cache_configurable_ttl(tmp_path):
         fake_frame.write_bytes(b"fake_pixel_data")
         return [fake_frame]
 
-    with patch('app.services.frame_cache.extract_frames') as mock_extract:
+    with patch("app.services.frame_cache.extract_frames") as mock_extract:
         mock_extract.side_effect = mock_extract_success
 
         # After custom TTL expiry, should retry

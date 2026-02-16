@@ -8,19 +8,16 @@ model (PS3.18 F.2) used by DICOMweb APIs.
 import base64
 import os
 import re
-import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 import pydicom
 from pydicom.dataset import Dataset
-from pydicom.uid import ExplicitVRLittleEndian
 
 STORAGE_DIR = os.getenv("DICOM_STORAGE_DIR", "/data/dicom")
 
 # ── UID Validation (Security) ──────────────────────────────────────
 # DICOM UIDs must only contain digits and dots to prevent directory traversal
-_UID_PATTERN = re.compile(r'^[0-9.]+$')
+_UID_PATTERN = re.compile(r"^[0-9.]+$")
 
 
 def _validate_uid(uid: str) -> bool:
@@ -46,8 +43,23 @@ def _validate_uid(uid: str) -> bool:
 
 # DICOM VR types that produce string values in JSON
 _STRING_VRS = {
-    "AE", "AS", "CS", "DA", "DS", "DT", "IS", "LO", "LT",
-    "PN", "SH", "ST", "TM", "UC", "UI", "UR", "UT",
+    "AE",
+    "AS",
+    "CS",
+    "DA",
+    "DS",
+    "DT",
+    "IS",
+    "LO",
+    "LT",
+    "PN",
+    "SH",
+    "ST",
+    "TM",
+    "UC",
+    "UI",
+    "UR",
+    "UT",
 }
 
 # Tags we extract for searchable columns
@@ -74,6 +86,7 @@ def ensure_storage_dir():
 def parse_dicom(data: bytes) -> Dataset:
     """Parse raw bytes into a pydicom Dataset."""
     from io import BytesIO
+
     ds = pydicom.dcmread(BytesIO(data), force=True)
     return ds
 
@@ -98,9 +111,7 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
 
         if elem.VR == "SQ":
             if elem.value:
-                entry["Value"] = [
-                    dataset_to_dicom_json(item) for item in elem.value
-                ]
+                entry["Value"] = [dataset_to_dicom_json(item) for item in elem.value]
         elif elem.VR == "PN":
             if elem.value:
                 name = str(elem.value)
@@ -123,10 +134,14 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
                     if isinstance(elem.value, bytes):
                         raw_bytes = elem.value
                     else:
-                        raw_bytes = elem.value.tobytes() if hasattr(elem.value, 'tobytes') else bytes(elem.value)
+                        raw_bytes = (
+                            elem.value.tobytes()
+                            if hasattr(elem.value, "tobytes")
+                            else bytes(elem.value)
+                        )
 
                     # Encode as Base64
-                    encoded = base64.b64encode(raw_bytes).decode('ascii')
+                    encoded = base64.b64encode(raw_bytes).decode("ascii")
                     entry["InlineBinary"] = encoded
                 except Exception:
                     # If encoding fails, skip this element

@@ -1,10 +1,10 @@
-
 """Tests for UPS-RS update workitem endpoint."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_update_scheduled_workitem_success(client: TestClient):
     """Update SCHEDULED workitem without transaction UID - should succeed."""
@@ -54,7 +54,7 @@ def test_update_in_progress_with_correct_txn_uid(client: TestClient):
     response = client.put(
         f"/v2/workitems/{workitem_uid}/state",
         json=claim_payload,
-        headers={"Transaction-UID": txn_uid}
+        headers={"Transaction-UID": txn_uid},
     )
     assert response.status_code == 200
 
@@ -63,9 +63,7 @@ def test_update_in_progress_with_correct_txn_uid(client: TestClient):
         "00100010": {"vr": "PN", "Value": [{"Alphabetic": "Updated^Patient"}]},
     }
     response = client.put(
-        f"/v2/workitems/{workitem_uid}",
-        json=update,
-        headers={"Transaction-UID": txn_uid}
+        f"/v2/workitems/{workitem_uid}", json=update, headers={"Transaction-UID": txn_uid}
     )
     assert response.status_code == 200
 
@@ -96,7 +94,7 @@ def test_update_in_progress_without_txn_uid(client: TestClient):
     response = client.put(
         f"/v2/workitems/{workitem_uid}/state",
         json=claim_payload,
-        headers={"Transaction-UID": txn_uid}
+        headers={"Transaction-UID": txn_uid},
     )
     assert response.status_code == 200
 
@@ -129,7 +127,7 @@ def test_update_in_progress_with_wrong_txn_uid(client: TestClient):
     response = client.put(
         f"/v2/workitems/{workitem_uid}/state",
         json=claim_payload,
-        headers={"Transaction-UID": txn_uid}
+        headers={"Transaction-UID": txn_uid},
     )
     assert response.status_code == 200
 
@@ -139,9 +137,7 @@ def test_update_in_progress_with_wrong_txn_uid(client: TestClient):
         "00100010": {"vr": "PN", "Value": [{"Alphabetic": "Updated^Patient"}]},
     }
     response = client.put(
-        f"/v2/workitems/{workitem_uid}",
-        json=update,
-        headers={"Transaction-UID": wrong_txn_uid}
+        f"/v2/workitems/{workitem_uid}", json=update, headers={"Transaction-UID": wrong_txn_uid}
     )
     assert response.status_code == 409
     assert "does not match" in response.json()["detail"]
@@ -167,7 +163,7 @@ def test_cannot_update_completed_workitem(client: TestClient):
     response = client.put(
         f"/v2/workitems/{workitem_uid}/state",
         json=claim_payload,
-        headers={"Transaction-UID": txn_uid}
+        headers={"Transaction-UID": txn_uid},
     )
     assert response.status_code == 200
 
@@ -179,7 +175,7 @@ def test_cannot_update_completed_workitem(client: TestClient):
     response = client.put(
         f"/v2/workitems/{workitem_uid}/state",
         json=complete_payload,
-        headers={"Transaction-UID": txn_uid}
+        headers={"Transaction-UID": txn_uid},
     )
     assert response.status_code == 200
 

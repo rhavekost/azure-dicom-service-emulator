@@ -1,8 +1,8 @@
-
 """Tests for AzureStorageQueueProvider."""
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
 
 from app.models.events import DicomEvent
 from app.services.events.providers import AzureStorageQueueProvider
@@ -16,10 +16,11 @@ async def test_azure_queue_provider_publish():
     mock_queue = Mock()
     mock_queue.send_message = Mock()
 
-    with patch("app.services.events.providers.QueueClient.from_connection_string", return_value=mock_queue):
+    with patch(
+        "app.services.events.providers.QueueClient.from_connection_string", return_value=mock_queue
+    ):
         provider = AzureStorageQueueProvider(
-            connection_string="UseDevelopmentStorage=true",
-            queue_name="test-queue"
+            connection_string="UseDevelopmentStorage=true", queue_name="test-queue"
         )
 
         event = DicomEvent.from_instance_created("1.2.3", "4.5.6", "7.8.9", 1, "http://localhost")
@@ -29,7 +30,6 @@ async def test_azure_queue_provider_publish():
         call_args = mock_queue.send_message.call_args
         # Verify message is JSON string
         import json
-
 
         message_data = json.loads(call_args.args[0])
         assert message_data["eventType"] == "Microsoft.HealthcareApis.DicomImageCreated"
@@ -41,10 +41,11 @@ async def test_azure_queue_provider_publish_batch():
     mock_queue = Mock()
     mock_queue.send_message = Mock()
 
-    with patch("app.services.events.providers.QueueClient.from_connection_string", return_value=mock_queue):
+    with patch(
+        "app.services.events.providers.QueueClient.from_connection_string", return_value=mock_queue
+    ):
         provider = AzureStorageQueueProvider(
-            connection_string="UseDevelopmentStorage=true",
-            queue_name="test-queue"
+            connection_string="UseDevelopmentStorage=true", queue_name="test-queue"
         )
 
         events = [
@@ -63,10 +64,11 @@ async def test_azure_queue_provider_close():
     mock_queue = Mock()
     mock_queue.close = Mock()
 
-    with patch("app.services.events.providers.QueueClient.from_connection_string", return_value=mock_queue):
+    with patch(
+        "app.services.events.providers.QueueClient.from_connection_string", return_value=mock_queue
+    ):
         provider = AzureStorageQueueProvider(
-            connection_string="UseDevelopmentStorage=true",
-            queue_name="test-queue"
+            connection_string="UseDevelopmentStorage=true", queue_name="test-queue"
         )
 
         await provider.close()

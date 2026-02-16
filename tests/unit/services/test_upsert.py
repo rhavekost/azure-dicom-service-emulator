@@ -1,14 +1,13 @@
-
 """Tests for upsert service (Phase 3, Task 2)."""
 
-import pytest
-from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomInstance
-from app.services.upsert import upsert_instance, delete_instance, store_instance
+from app.services.upsert import delete_instance, store_instance, upsert_instance
 
 pytestmark = pytest.mark.unit
 
@@ -22,7 +21,6 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
-
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -59,7 +57,7 @@ def sample_dicom_data():
             "patient_name": "Test^Patient",
             "modality": "CT",
             "sop_class_uid": "1.2.840.10008.5.1.4.1.1.2",
-        }
+        },
     }
 
 
@@ -71,12 +69,7 @@ async def test_upsert_creates_new_instance(db_session, storage_dir, sample_dicom
     sop_uid = "1.2.3.4.5"
 
     result = await upsert_instance(
-        db_session,
-        study_uid,
-        series_uid,
-        sop_uid,
-        sample_dicom_data,
-        storage_dir
+        db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
 
     assert result == "created"
@@ -108,12 +101,7 @@ async def test_upsert_replaces_existing_instance(db_session, storage_dir, sample
 
     # Create initial instance
     result1 = await upsert_instance(
-        db_session,
-        study_uid,
-        series_uid,
-        sop_uid,
-        sample_dicom_data,
-        storage_dir
+        db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
     assert result1 == "created"
 
@@ -138,17 +126,12 @@ async def test_upsert_replaces_existing_instance(db_session, storage_dir, sample
             "patient_name": "Updated^Patient",
             "modality": "MR",
             "sop_class_uid": "1.2.840.10008.5.1.4.1.1.4",
-        }
+        },
     }
 
     # Replace the instance
     result2 = await upsert_instance(
-        db_session,
-        study_uid,
-        series_uid,
-        sop_uid,
-        updated_data,
-        storage_dir
+        db_session, study_uid, series_uid, sop_uid, updated_data, storage_dir
     )
     assert result2 == "replaced"
 
@@ -179,12 +162,7 @@ async def test_delete_instance(db_session, storage_dir, sample_dicom_data):
 
     # Create instance first
     await upsert_instance(
-        db_session,
-        study_uid,
-        series_uid,
-        sop_uid,
-        sample_dicom_data,
-        storage_dir
+        db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
 
     # Get file path before deletion
@@ -216,14 +194,7 @@ async def test_store_instance(db_session, storage_dir, sample_dicom_data):
     series_uid = "1.2.3.4"
     sop_uid = "1.2.3.4.5"
 
-    await store_instance(
-        db_session,
-        study_uid,
-        series_uid,
-        sop_uid,
-        sample_dicom_data,
-        storage_dir
-    )
+    await store_instance(db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir)
 
     # Verify instance was stored in database
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)

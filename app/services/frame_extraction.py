@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+
 import pydicom
 
 logger = logging.getLogger(__name__)

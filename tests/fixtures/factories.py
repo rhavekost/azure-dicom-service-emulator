@@ -1,12 +1,11 @@
 """Test data factories for creating DICOM instances."""
 
 import uuid
-from io import BytesIO
 from datetime import datetime
+from io import BytesIO
 
-import pydicom
 from pydicom.dataset import Dataset, FileDataset
-from pydicom.uid import ExplicitVRLittleEndian, ImplicitVRLittleEndian, generate_uid, UID
+from pydicom.uid import UID, ExplicitVRLittleEndian, generate_uid
 
 
 class DicomFactory:
@@ -83,6 +82,7 @@ class DicomFactory:
         # Add pixel data if requested
         if with_pixel_data:
             import numpy as np
+
             ds.Rows = 512
             ds.Columns = 512
             ds.BitsAllocated = 16
@@ -157,6 +157,7 @@ class DicomFactory:
 
         if with_pixel_data:
             import numpy as np
+
             ds.Rows = 256
             ds.Columns = 256
             ds.BitsAllocated = 16
@@ -223,6 +224,7 @@ class DicomFactory:
 
         if with_pixel_data:
             import numpy as np
+
             ds.Rows = 128
             ds.Columns = 128
             ds.BitsAllocated = 16

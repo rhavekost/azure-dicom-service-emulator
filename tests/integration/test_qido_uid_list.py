@@ -1,18 +1,16 @@
-
 """Integration tests for UID list matching in QIDO-RS search (Phase 4, Task 4)."""
 
-import pytest
-from datetime import datetime, timezone
 from io import BytesIO
 
 import pydicom
+import pytest
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomInstance
-from app.services.dicom_engine import extract_searchable_metadata, dataset_to_dicom_json
+from app.services.dicom_engine import dataset_to_dicom_json, extract_searchable_metadata
 
 pytestmark = pytest.mark.integration
 
@@ -26,6 +24,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -268,9 +267,15 @@ async def test_series_uid_list_comma_separated(db_session):
     series2_uid = "1.2.840.113619.2.1.2.2"
     series3_uid = "1.2.840.113619.2.1.2.3"
 
-    inst1 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid)
-    inst2 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid)
-    inst3 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series3_uid)
+    inst1 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid
+    )
+    inst2 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid
+    )
+    inst3 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series3_uid
+    )
 
     from app.services.search_utils import parse_uid_list
 
@@ -297,8 +302,12 @@ async def test_series_uid_list_backslash_separated(db_session):
     series1_uid = "1.2.840.113619.2.1.2.1"
     series2_uid = "1.2.840.113619.2.1.2.2"
 
-    inst1 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid)
-    inst2 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid)
+    inst1 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid
+    )
+    inst2 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid
+    )
 
     from app.services.search_utils import parse_uid_list
 
@@ -321,8 +330,12 @@ async def test_series_uid_single_exact_match(db_session):
     series1_uid = "1.2.840.113619.2.1.2.1"
     series2_uid = "1.2.840.113619.2.1.2.2"
 
-    inst1 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid)
-    inst2 = await store_test_instance(db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid)
+    inst1 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series1_uid
+    )
+    inst2 = await store_test_instance(
+        db_session, "PAT1", study_uid=study_uid, series_uid=series2_uid
+    )
 
     # Exact match (no comma or backslash)
     query = select(DicomInstance).where(DicomInstance.series_instance_uid == series1_uid)
@@ -436,8 +449,9 @@ async def test_uid_list_with_other_filters(db_session):
     inst2 = await store_test_instance(db_session, "PAT002", study_uid=study2_uid)
     inst3 = await store_test_instance(db_session, "PAT001", study_uid=study2_uid)
 
-    from app.services.search_utils import parse_uid_list
     from sqlalchemy import and_
+
+    from app.services.search_utils import parse_uid_list
 
     # UID list + PatientID filter
     uid_param = f"{study1_uid},{study2_uid}"
@@ -473,9 +487,9 @@ async def test_uid_list_does_not_break_wildcard_matching(db_session):
     inst1 = await store_test_instance(db_session, "PAT001", study_uid=study1_uid)
     inst2 = await store_test_instance(db_session, "PAT002", study_uid=study2_uid)
 
-    from app.services.search_utils import parse_uid_list, translate_wildcards
     from sqlalchemy import and_
 
+    from app.services.search_utils import parse_uid_list, translate_wildcards
 
     # UID list + wildcard PatientID
     uid_param = f"{study1_uid},{study2_uid}"

@@ -1,18 +1,16 @@
-
 """Integration tests for fuzzy matching in QIDO-RS search (Phase 4, Task 2)."""
 
-import pytest
-from datetime import datetime, timezone
 from io import BytesIO
 
 import pydicom
+import pytest
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.models.dicom import DicomInstance
-from app.services.dicom_engine import extract_searchable_metadata, dataset_to_dicom_json
+from app.services.dicom_engine import dataset_to_dicom_json, extract_searchable_metadata
 
 pytestmark = pytest.mark.integration
 
@@ -26,6 +24,7 @@ async def db_session(tmp_path):
 
     # Create tables
     from app.database import Base
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -118,9 +117,7 @@ async def test_fuzzy_search_patient_name(db_session):
     from app.services.search_utils import build_fuzzy_name_filter
 
     # Test fuzzy search for "joh" (should match "John^Doe" and "Doe^John")
-    query = select(DicomInstance).where(
-        build_fuzzy_name_filter("joh", DicomInstance.patient_name)
-    )
+    query = select(DicomInstance).where(build_fuzzy_name_filter("joh", DicomInstance.patient_name))
     result = await db_session.execute(query)
     instances = result.scalars().all()
 
@@ -178,11 +175,8 @@ async def test_fuzzy_search_family_name_only(db_session):
 
     from app.services.search_utils import build_fuzzy_name_filter
 
-
     # Test fuzzy search for "do" (should match "Doe^..." names)
-    query = select(DicomInstance).where(
-        build_fuzzy_name_filter("do", DicomInstance.patient_name)
-    )
+    query = select(DicomInstance).where(build_fuzzy_name_filter("do", DicomInstance.patient_name))
     result = await db_session.execute(query)
     instances = result.scalars().all()
 

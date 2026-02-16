@@ -1,13 +1,14 @@
-
 """Tests for WebhookEventProvider."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.models.events import DicomEvent
 from app.services.events.providers import WebhookEventProvider
 
 pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_webhook_provider_publish_success():

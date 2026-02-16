@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 class MultipartPart(NamedTuple):
     """Single part from multipart/related message."""
+
     content_type: str
     data: bytes
 
@@ -22,7 +23,7 @@ def parse_multipart_related(body: bytes, content_type: str) -> list[MultipartPar
         List of MultipartPart with content_type and binary data
     """
     # Extract boundary from Content-Type header
-    boundary_match = re.search(r'boundary=([^\s;]+)', content_type)
+    boundary_match = re.search(r"boundary=([^\s;]+)", content_type)
     if not boundary_match:
         raise ValueError("No boundary found in Content-Type header")
 
@@ -34,24 +35,24 @@ def parse_multipart_related(body: bytes, content_type: str) -> list[MultipartPar
 
     result = []
     for part in parts:
-        if not part or part == b'--\r\n' or part == b'--':
+        if not part or part == b"--\r\n" or part == b"--":
             continue
 
         # Split headers from body
-        if b'\r\n\r\n' in part:
-            headers, data = part.split(b'\r\n\r\n', 1)
-        elif b'\n\n' in part:
-            headers, data = part.split(b'\n\n', 1)
+        if b"\r\n\r\n" in part:
+            headers, data = part.split(b"\r\n\r\n", 1)
+        elif b"\n\n" in part:
+            headers, data = part.split(b"\n\n", 1)
         else:
             continue
 
         # Remove trailing CRLF
-        data = data.rstrip(b'\r\n')
+        data = data.rstrip(b"\r\n")
 
         # Extract Content-Type
         part_content_type = "application/dicom"  # default
-        headers_str = headers.decode('utf-8', errors='ignore')
-        ct_match = re.search(r'Content-Type:\s*([^\r\n]+)', headers_str, re.IGNORECASE)
+        headers_str = headers.decode("utf-8", errors="ignore")
+        ct_match = re.search(r"Content-Type:\s*([^\r\n]+)", headers_str, re.IGNORECASE)
         if ct_match:
             part_content_type = ct_match.group(1).strip()
 
@@ -75,11 +76,7 @@ def build_multipart_response(parts: list[tuple[str, bytes]], boundary: str) -> b
     body_parts = []
 
     for content_type, data in parts:
-        part = (
-            f"--{boundary}\r\n"
-            f"Content-Type: {content_type}\r\n"
-            f"\r\n"
-        ).encode()
+        part = (f"--{boundary}\r\n" f"Content-Type: {content_type}\r\n" f"\r\n").encode()
         part += data + b"\r\n"
         body_parts.append(part)
 

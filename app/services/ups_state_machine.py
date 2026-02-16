@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 class StateTransitionError(Exception):
     """Invalid state transition error."""
+
     pass
 
 
@@ -14,10 +15,7 @@ VALID_STATES = ["SCHEDULED", "IN PROGRESS", "COMPLETED", "CANCELED"]
 
 
 def validate_state_transition(
-    current_state: str,
-    new_state: str,
-    current_txn_uid: str | None,
-    provided_txn_uid: str | None
+    current_state: str, new_state: str, current_txn_uid: str | None, provided_txn_uid: str | None
 ) -> None:
     """
     Validate state transition and transaction UID.
@@ -47,59 +45,43 @@ def validate_state_transition(
     # SCHEDULED → IN PROGRESS (claim)
     if current_state == "SCHEDULED" and new_state == "IN PROGRESS":
         if not provided_txn_uid:
-            raise StateTransitionError(
-                "Transaction UID required to claim workitem"
-            )
+            raise StateTransitionError("Transaction UID required to claim workitem")
         return  # Valid transition
 
     # IN PROGRESS → COMPLETED
     if current_state == "IN PROGRESS" and new_state == "COMPLETED":
         if not provided_txn_uid:
-            raise StateTransitionError(
-                "Transaction UID required for workitem in IN PROGRESS state"
-            )
+            raise StateTransitionError("Transaction UID required for workitem in IN PROGRESS state")
         if provided_txn_uid != current_txn_uid:
             raise StateTransitionError(
-                "Transaction UID does not match. "
-                "Workitem is owned by another process."
+                "Transaction UID does not match. " "Workitem is owned by another process."
             )
         return  # Valid transition
 
     # IN PROGRESS → CANCELED
     if current_state == "IN PROGRESS" and new_state == "CANCELED":
         if not provided_txn_uid:
-            raise StateTransitionError(
-                "Transaction UID required for workitem in IN PROGRESS state"
-            )
+            raise StateTransitionError("Transaction UID required for workitem in IN PROGRESS state")
         if provided_txn_uid != current_txn_uid:
             raise StateTransitionError(
-                "Transaction UID does not match. "
-                "Workitem is owned by another process."
+                "Transaction UID does not match. " "Workitem is owned by another process."
             )
         return  # Valid transition
 
     # SCHEDULED → CANCELED (via cancel request only)
     if current_state == "SCHEDULED" and new_state == "CANCELED":
-        raise StateTransitionError(
-            "Use /cancelrequest endpoint to cancel SCHEDULED workitem"
-        )
+        raise StateTransitionError("Use /cancelrequest endpoint to cancel SCHEDULED workitem")
 
     # COMPLETED/CANCELED → anything (invalid)
     if current_state in ["COMPLETED", "CANCELED"]:
-        raise StateTransitionError(
-            f"Cannot transition from {current_state} to {new_state}"
-        )
+        raise StateTransitionError(f"Cannot transition from {current_state} to {new_state}")
 
     # Any other transition
-    raise StateTransitionError(
-        f"Invalid state transition: {current_state} → {new_state}"
-    )
+    raise StateTransitionError(f"Invalid state transition: {current_state} → {new_state}")
 
 
 def can_update_workitem(
-    current_state: str,
-    current_txn_uid: str | None,
-    provided_txn_uid: str | None
+    current_state: str, current_txn_uid: str | None, provided_txn_uid: str | None
 ) -> bool:
     """
     Check if workitem can be updated.
@@ -117,9 +99,7 @@ def can_update_workitem(
     """
     # Cannot update COMPLETED or CANCELED
     if current_state in ["COMPLETED", "CANCELED"]:
-        raise StateTransitionError(
-            f"Cannot update workitem in {current_state} state"
-        )
+        raise StateTransitionError(f"Cannot update workitem in {current_state} state")
 
     # SCHEDULED - no transaction UID required
     if current_state == "SCHEDULED":
@@ -128,13 +108,10 @@ def can_update_workitem(
     # IN PROGRESS - transaction UID required
     if current_state == "IN PROGRESS":
         if not provided_txn_uid:
-            raise StateTransitionError(
-                "Transaction UID required for workitem in IN PROGRESS state"
-            )
+            raise StateTransitionError("Transaction UID required for workitem in IN PROGRESS state")
         if provided_txn_uid != current_txn_uid:
             raise StateTransitionError(
-                "Transaction UID does not match. "
-                "Workitem is owned by another process."
+                "Transaction UID does not match. " "Workitem is owned by another process."
             )
         return True
 

@@ -1,10 +1,10 @@
-
 """Tests for UPS-RS subscription stubs (501 Not Implemented)."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
+
 
 def test_subscribe_returns_501(client: TestClient):
     """Subscribe endpoint returns 501."""

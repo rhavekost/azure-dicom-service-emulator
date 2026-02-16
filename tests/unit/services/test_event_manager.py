@@ -1,15 +1,16 @@
-
 """Tests for EventManager."""
 
 import asyncio
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.models.events import DicomEvent
 from app.services.events.manager import EventManager
 from app.services.events.providers import EventProvider
 
 pytestmark = pytest.mark.unit
+
 
 class MockProvider(EventProvider):
     def __init__(self, name: str, should_fail: bool = False):
@@ -67,6 +68,7 @@ async def test_event_manager_continues_on_provider_failure():
 @pytest.mark.asyncio
 async def test_event_manager_timeout():
     """EventManager times out slow providers."""
+
     class SlowProvider(EventProvider):
         async def publish(self, event: DicomEvent) -> None:
             await asyncio.sleep(10)  # Simulate slow provider

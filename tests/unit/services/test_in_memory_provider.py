@@ -1,4 +1,3 @@
-
 """Tests for InMemoryEventProvider."""
 
 import pytest
@@ -7,6 +6,7 @@ from app.models.events import DicomEvent
 from app.services.events.providers import InMemoryEventProvider
 
 pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_in_memory_provider_publish():
@@ -56,7 +56,9 @@ async def test_in_memory_provider_get_events():
 async def test_in_memory_provider_clear():
     """InMemoryProvider can clear all events."""
     provider = InMemoryEventProvider()
-    await provider.publish(DicomEvent.from_instance_created("1.2.3", "4.5.6", "7.8.9", 1, "http://localhost"))
+    await provider.publish(
+        DicomEvent.from_instance_created("1.2.3", "4.5.6", "7.8.9", 1, "http://localhost")
+    )
 
     provider.clear()
 

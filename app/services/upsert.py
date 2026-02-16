@@ -4,14 +4,13 @@ Upsert service for PUT STOW-RS operations (Phase 3, Task 2).
 Implements create-or-replace logic for DICOM instances.
 """
 
-import os
-import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dicom import DicomInstance
@@ -23,7 +22,7 @@ async def upsert_instance(
     series_uid: str,
     sop_uid: str,
     dcm_data: dict[str, Any],
-    storage_dir: str
+    storage_dir: str,
 ) -> str:
     """
     Create or replace a DICOM instance.
@@ -62,11 +61,7 @@ async def upsert_instance(
 
 
 async def delete_instance(
-    db: AsyncSession,
-    study_uid: str,
-    series_uid: str,
-    sop_uid: str,
-    storage_dir: str
+    db: AsyncSession, study_uid: str, series_uid: str, sop_uid: str, storage_dir: str
 ) -> None:
     """
     Delete a DICOM instance from database and filesystem.
@@ -118,7 +113,7 @@ async def store_instance(
     series_uid: str,
     sop_uid: str,
     dcm_data: dict[str, Any],
-    storage_dir: str
+    storage_dir: str,
 ) -> None:
     """
     Store a DICOM instance in database and filesystem.
