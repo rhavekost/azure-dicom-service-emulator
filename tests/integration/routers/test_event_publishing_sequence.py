@@ -207,12 +207,21 @@ async def test_put_stow_publishes_event_with_integer_sequence(
     # Create test DICOM
     dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom_bytes()
 
-    # Upload via PUT STOW-RS
+    # Upload via PUT STOW-RS (multipart format like POST)
+    boundary = "test-boundary"
+    body = (
+        (f"--{boundary}\r\n" f"Content-Type: application/dicom\r\n\r\n").encode()
+        + dcm_bytes
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.put(
             f"/v2/studies/{study_uid}",
-            content=dcm_bytes,
-            headers={"Content-Type": "application/dicom"},
+            content=body,
+            headers={
+                "Content-Type": f"multipart/related; type=application/dicom; boundary={boundary}"
+            },
         )
 
     assert response.status_code in (200, 201, 202)

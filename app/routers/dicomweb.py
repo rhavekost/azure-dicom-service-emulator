@@ -393,13 +393,13 @@ async def stow_rs_put(
                 }
             )
 
-            # Get instance for event publishing
+            # Get instance and track with feed_entry for event publishing
             result = await db.execute(
                 select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
             )
             stored_instance = result.scalar_one_or_none()
             if stored_instance:
-                instances_to_publish.append(stored_instance)
+                instances_to_publish.append((stored_instance, feed_entry))
 
         except Exception as e:
             failures.append(
@@ -427,7 +427,7 @@ async def stow_rs_put(
     await db.commit()
 
     # Publish DicomImageCreated events (best-effort, after commit)
-    for instance in instances_to_publish:
+    for instance, feed_entry in instances_to_publish:
         try:
             from main import get_event_manager
 
@@ -436,7 +436,7 @@ async def stow_rs_put(
                 study_uid=instance.study_instance_uid,
                 series_uid=instance.series_instance_uid,
                 instance_uid=instance.sop_instance_uid,
-                sequence_number=instance.id,  # Use database ID as sequence
+                sequence_number=feed_entry.sequence,  # Use ChangeFeedEntry sequence (int)
                 service_url=str(request.base_url).rstrip("/"),
             )
             await event_manager.publish(event)
