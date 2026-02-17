@@ -75,6 +75,7 @@ QIDO_TAG_MAP = {
 # Used in STOW-RS FailedSOPSequence responses (tag 0x00081197)
 FAILURE_REASON_UNABLE_TO_PROCESS = 0xC000  # Processing failure
 FAILURE_REASON_UID_MISMATCH = 0xC409  # StudyInstanceUID mismatch
+FAILURE_REASON_INSTANCE_ALREADY_EXISTS = 45070  # Instance already exists (0xB00E hex)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -142,6 +143,23 @@ async def stow_rs(
             if effective_study_uid is None:
                 effective_study_uid = study_uid
 
+            # Check for duplicate (POST should reject, PUT should upsert)
+            existing_check = await db.execute(
+                select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+            )
+            existing_instance = existing_check.scalar_one_or_none()
+
+            if existing_instance:
+                # Duplicate detected - add to failed sequence
+                failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                        "00081155": {"vr": "UI", "Value": [sop_uid]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_INSTANCE_ALREADY_EXISTS]},
+                    }
+                )
+                continue  # Skip storing this duplicate
+
             # Store file to disk
             file_path = store_instance(part.data, ds)
             file_size = len(part.data)
@@ -150,60 +168,32 @@ async def stow_rs(
             dicom_json = dataset_to_dicom_json(ds)
             searchable = extract_searchable_metadata(ds)
 
-            # Check for existing instance (update vs create)
-            existing = await db.execute(
-                select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+            # Create new instance (POST never updates, only creates)
+            instance = DicomInstance(
+                study_instance_uid=study_uid,
+                series_instance_uid=series_uid,
+                sop_instance_uid=sop_uid,
+                sop_class_uid=str(getattr(ds, "SOPClassUID", "")),
+                transfer_syntax_uid=str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
+                if hasattr(ds, "file_meta")
+                else None,
+                dicom_json=dicom_json,
+                file_path=file_path,
+                file_size=file_size,
+                **searchable,
             )
-            existing_instance = existing.scalar_one_or_none()
-
-            action = "create"
-            stored_instance = None
-            if existing_instance:
-                # Update existing — delete old file, update record
-                action = "update"
-                delete_instance_file(existing_instance.file_path)
-                existing_instance.file_path = file_path
-                existing_instance.file_size = file_size
-                existing_instance.dicom_json = dicom_json
-                existing_instance.transfer_syntax_uid = (
-                    str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
-                    if hasattr(ds, "file_meta")
-                    else None
-                )
-                for col, val in searchable.items():
-                    setattr(existing_instance, col, val)
-                stored_instance = existing_instance
-            else:
-                # Create new instance
-                instance = DicomInstance(
-                    study_instance_uid=study_uid,
-                    series_instance_uid=series_uid,
-                    sop_instance_uid=sop_uid,
-                    sop_class_uid=str(getattr(ds, "SOPClassUID", "")),
-                    transfer_syntax_uid=str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
-                    if hasattr(ds, "file_meta")
-                    else None,
-                    dicom_json=dicom_json,
-                    file_path=file_path,
-                    file_size=file_size,
-                    **searchable,
-                )
-                db.add(instance)
-                stored_instance = instance
+            db.add(instance)
+            stored_instance = instance
 
             # Add change feed entry
             feed_entry = ChangeFeedEntry(
                 study_instance_uid=study_uid,
                 series_instance_uid=series_uid,
                 sop_instance_uid=sop_uid,
-                action=action,
+                action="create",
                 state="current",
             )
             db.add(feed_entry)
-
-            # If previous change feed entry for this SOP exists, mark as replaced
-            if action == "update":
-                await _mark_previous_feed_entries(db, sop_uid)
 
             stored.append(
                 {
@@ -256,10 +246,11 @@ async def stow_rs(
 
     response_body = build_store_response(effective_study_uid, stored, warnings, failures)
 
-    # Azure v2: 200 if all succeed, 202 if warnings, 409 if all fail
+    # Azure v2: 200 if all succeed, 202 if warnings or partial success, 409 if all fail
     if failures and not stored:
         status_code = 409
-    elif has_warnings or warnings:
+    elif has_warnings or warnings or failures:
+        # Return 202 for warnings OR partial success (some stored, some failed)
         status_code = 202
     else:
         status_code = 200
