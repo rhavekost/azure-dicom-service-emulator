@@ -32,6 +32,7 @@ from app.services.dicom_engine import (
     read_instance,
     store_instance,
     validate_required_attributes,
+    validate_searchable_attributes,
 )
 from app.services.frame_cache import FrameCache
 from app.services.image_rendering import render_frame as render_frame_to_image
@@ -124,6 +125,19 @@ async def stow_rs(
                     }
                 )
                 continue
+
+            # Validate searchable attributes (Azure v2: warnings, not failures)
+            validation_warnings = validate_searchable_attributes(ds)
+            if validation_warnings:
+                has_warnings = True
+                # Add to warnings list to trigger WarningReason in response
+                # We add a placeholder dict since build_store_response only checks truthiness
+                warnings.append({})
+                # Log warnings but continue storing
+                sop_uid_temp = str(getattr(ds, "SOPInstanceUID", "unknown"))
+                logger.warning(
+                    f"Searchable attribute warnings for {sop_uid_temp}: {validation_warnings}"
+                )
 
             sop_uid = str(ds.SOPInstanceUID)
             study_uid = str(ds.StudyInstanceUID)
@@ -318,6 +332,9 @@ async def stow_rs_put(
                     }
                 )
                 continue
+
+            # Note: PUT does not validate searchable attributes (Azure v2 behavior)
+            # Searchable attribute validation only applies to POST
 
             sop_uid = str(ds.SOPInstanceUID)
             study_uid = str(ds.StudyInstanceUID)

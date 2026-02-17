@@ -233,6 +233,36 @@ def validate_required_attributes(ds: Dataset) -> list[str]:
     return errors
 
 
+def validate_searchable_attributes(ds: Dataset) -> list[str]:
+    """
+    Validate searchable DICOM attributes.
+
+    Returns list of warning messages for missing/invalid searchable attributes.
+    Azure v2 behavior: Warnings for searchable attributes, errors only for required.
+
+    Args:
+        ds: DICOM dataset to validate
+
+    Returns:
+        List of warning messages (empty if all searchable attributes are valid)
+    """
+    warnings = []
+
+    # Check PatientID (searchable, should be present)
+    if not hasattr(ds, "PatientID") or not ds.PatientID:
+        warnings.append("Missing or empty PatientID (0010,0020)")
+
+    # Check Modality (searchable, should be present)
+    if not hasattr(ds, "Modality") or not ds.Modality:
+        warnings.append("Missing or empty Modality (0008,0060)")
+
+    # Check Study Date (searchable)
+    if not hasattr(ds, "StudyDate") or not ds.StudyDate:
+        warnings.append("Missing or empty StudyDate (0008,0020)")
+
+    return warnings
+
+
 def build_store_response(
     study_uid: str,
     stored: list[dict],

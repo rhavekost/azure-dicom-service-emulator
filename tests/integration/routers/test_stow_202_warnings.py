@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
+from tests.fixtures.factories import DicomFactory
 from tests.integration.routers.test_event_publishing_sequence import create_test_dicom_bytes
 
 pytestmark = pytest.mark.integration
@@ -41,19 +42,17 @@ def storage_dir(tmp_path):
     return storage
 
 
-@pytest.mark.skip(reason="Waiting for Task 5: searchable attribute validation")
 @pytest.mark.asyncio
 async def test_post_with_searchable_attribute_warnings_returns_202(
     db_session, storage_dir, monkeypatch
 ):
     """POST with searchable attribute validation warnings should return 202.
 
-    This test is a placeholder for Task 5. When searchable attribute validation
-    is implemented, it will:
-    1. Create DICOM with invalid searchable attribute (e.g., empty PatientID)
-    2. Verify instance is stored successfully
-    3. Verify response returns 202 (not 200 or 409)
-    4. Verify response contains WarningReason tag (0x00081196)
+    This test verifies that DICOM with missing/invalid searchable attributes:
+    1. Instance is stored successfully (not rejected)
+    2. Response returns 202 (not 200 or 409)
+    3. Response contains WarningReason tag (0x00081196)
+    4. Response contains success entry in ReferencedSOPSequence
     """
     # Set up storage directory
     monkeypatch.setenv("DICOM_STORAGE_DIR", str(storage_dir))
@@ -81,15 +80,8 @@ async def test_post_with_searchable_attribute_warnings_returns_202(
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # TODO (Task 5): Create DICOM with invalid PatientID or other searchable attribute
-    # This requires adding a test helper to create DICOM with specific attribute issues
-    # For example:
-    # dcm_bytes = create_test_dicom_bytes_with_invalid_searchable_attr(
-    #     patient_id=""  # Empty string should trigger warning but allow storage
-    # )
-
-    # Create test DICOM (placeholder - will be modified in Task 5)
-    dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom_bytes()
+    # Create DICOM with missing PatientID (searchable attribute)
+    dcm_bytes = DicomFactory.create_dicom_with_attrs(patient_id=None)
 
     boundary = "test-boundary"
     body = (
@@ -101,17 +93,13 @@ async def test_post_with_searchable_attribute_warnings_returns_202(
     headers = {"Content-Type": f"multipart/related; type=application/dicom; boundary={boundary}"}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        # When Task 5 is implemented, this should return 202 with warnings
         response = await client.post("/v2/studies", content=body, headers=headers)
 
-        # TODO (Task 5): Update assertions when searchable attribute validation exists
-        # assert response.status_code == 202
-        # data = response.json()
-        # assert "00081196" in data  # WarningReason tag
-        # assert "00081199" in data  # Instance was stored successfully
-
-        # For now, just verify current behavior (200 for valid DICOM)
-        assert response.status_code == 200
+        # Azure v2: searchable attribute issues return 202 with warnings
+        assert response.status_code == 202
+        data = response.json()
+        assert "00081196" in data  # WarningReason tag
+        assert "00081199" in data  # Instance was stored successfully
 
 
 @pytest.mark.asyncio

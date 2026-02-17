@@ -7,6 +7,9 @@ from io import BytesIO
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import UID, ExplicitVRLittleEndian, generate_uid
 
+# Sentinel value for optional parameters
+_UNSET = object()
+
 
 class DicomFactory:
     """Factory for creating test DICOM files."""
@@ -282,6 +285,80 @@ class DicomFactory:
             ds.PatientID = "TEST-999"
         if "Modality" not in missing_tags:
             ds.Modality = "CT"
+
+        buffer = BytesIO()
+        ds.save_as(buffer, write_like_original=False)
+        return buffer.getvalue()
+
+    @staticmethod
+    def create_dicom_with_attrs(
+        patient_id: str | None = "TEST-001",
+        modality: str | None = "CT",
+        study_date: str | None = _UNSET,
+        study_uid: str | None = None,
+        series_uid: str | None = None,
+        sop_uid: str | None = None,
+    ) -> bytes:
+        """
+        Create a DICOM instance with specific attribute values.
+
+        Useful for testing searchable attribute validation. Pass None to omit
+        an attribute entirely, or empty string to include but leave empty.
+
+        Args:
+            patient_id: PatientID value (None to omit, "" for empty)
+            modality: Modality value (None to omit, "" for empty)
+            study_date: StudyDate value (None to omit, "" for empty, auto-generated if not provided)
+            study_uid: Study Instance UID (generated if None)
+            series_uid: Series Instance UID (generated if None)
+            sop_uid: SOP Instance UID (generated if None)
+
+        Returns:
+            DICOM file as bytes
+        """
+        study_uid = study_uid or generate_uid()
+        series_uid = series_uid or generate_uid()
+        sop_uid = sop_uid or generate_uid()
+
+        # Auto-generate study_date if not provided (default parameter)
+        if study_date is _UNSET:
+            study_date = datetime.now().strftime("%Y%m%d")
+
+        file_meta = Dataset()
+        file_meta.MediaStorageSOPClassUID = "1.2.840.10008.5.1.4.1.1.2"  # CT Image
+        file_meta.MediaStorageSOPInstanceUID = sop_uid
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        file_meta.ImplementationClassUID = "1.2.826.0.1.3680043.8.498.1"
+
+        ds = FileDataset(
+            filename_or_obj=BytesIO(),
+            dataset=Dataset(),
+            file_meta=file_meta,
+            preamble=b"\x00" * 128,
+        )
+
+        # Required DICOM attributes (always present)
+        ds.SOPClassUID = "1.2.840.10008.5.1.4.1.1.2"
+        ds.SOPInstanceUID = sop_uid
+        ds.StudyInstanceUID = study_uid
+        ds.SeriesInstanceUID = series_uid
+
+        # Searchable attributes - conditionally add based on parameters
+        if patient_id is not None:
+            ds.PatientID = patient_id
+        if modality is not None:
+            ds.Modality = modality
+        if study_date is not None:
+            ds.StudyDate = study_date
+
+        # Optional attributes (for completeness)
+        ds.PatientName = "Test^Patient"
+        ds.StudyTime = "120000"
+        ds.AccessionNumber = f"ACC-{uuid.uuid4().hex[:8]}"
+        ds.StudyDescription = "Test Study"
+        ds.SeriesDescription = "Test Series"
+        ds.SeriesNumber = 1
+        ds.InstanceNumber = 1
 
         buffer = BytesIO()
         ds.save_as(buffer, write_like_original=False)
