@@ -424,9 +424,9 @@ def test_search_without_includefield_returns_default_set(client: TestClient):
 def test_search_includefield_invalid_tag_ignored(client: TestClient):
     """GET /v2/studies?includefield=ZZZZZZZZ with invalid tag is accepted.
 
-    TODO: includefield is not functionally implemented, so invalid tags are
-    simply ignored (they have no effect). The response returns the default
-    set of fields. This test verifies no error is raised for invalid tags.
+    Invalid tags are silently ignored. When only invalid tags are provided,
+    the response returns only required return tags (StudyInstanceUID, etc.).
+    This test verifies no error is raised for invalid tags.
     """
     dcm = DicomFactory.create_ct_image(
         patient_id="ADV-INCBAD-001",
@@ -446,11 +446,11 @@ def test_search_includefield_invalid_tag_ignored(client: TestClient):
     studies = response.json()
     assert len(studies) == 1
 
-    # Default fields should still be present
+    # Required tags should be present, but not other default fields
     study = studies[0]
-    assert "0020000D" in study  # StudyInstanceUID
-    assert "00100020" in study  # PatientID
-    assert study["00100020"]["Value"][0] == "ADV-INCBAD-001"
+    assert "0020000D" in study  # StudyInstanceUID (required)
+    # PatientID should NOT be present when not requested
+    assert "00100020" not in study
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

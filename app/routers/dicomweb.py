@@ -792,6 +792,73 @@ async def retrieve_rendered_frame(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
+def filter_dicom_json_by_includefield(
+    dicom_json: dict, includefield: str | list[str] | None, level: str = "study"
+) -> dict:
+    """Filter DICOM JSON based on includefield parameter.
+
+    Args:
+        dicom_json: Full DICOM JSON dictionary
+        includefield: Comma-separated list of DICOM tags, list of tags, "all", or None
+        level: Query level ("study", "series", or "instance")
+
+    Returns:
+        Filtered DICOM JSON dictionary
+
+    Behavior:
+        - includefield=all: return everything
+        - includefield=<tag>: return only requested tags + required return tags
+        - includefield=None: return as-is (default set already built)
+
+    Required return tags (always included):
+        - StudyInstanceUID (0020000D)
+        - SeriesInstanceUID (0020000E)
+        - SOPInstanceUID (00080018)
+        - SOPClassUID (00080016)
+    """
+    # Required tags per DICOM PS3.18 Table 6.7.1-2a
+    REQUIRED_TAGS = {
+        "0020000D",  # StudyInstanceUID
+        "0020000E",  # SeriesInstanceUID
+        "00080018",  # SOPInstanceUID
+        "00080016",  # SOPClassUID
+    }
+
+    # If no includefield specified, return as-is (default set)
+    if not includefield:
+        return dicom_json
+
+    # Handle list of values (multiple query params)
+    if isinstance(includefield, list):
+        # Check if any value is "all"
+        if "all" in includefield:
+            return dicom_json
+        # Combine all tags from the list (filter out empty strings)
+        requested_tags = {
+            tag.strip() for value in includefield for tag in value.split(",") if tag.strip()
+        }
+        # If no valid tags after filtering, return default
+        if not requested_tags:
+            return dicom_json
+    else:
+        # If includefield=all, return everything
+        if includefield == "all":
+            return dicom_json
+        # Parse requested tags (comma-separated)
+        requested_tags = {tag.strip() for tag in includefield.split(",") if tag.strip()}
+        # If empty string or no valid tags, return default
+        if not requested_tags:
+            return dicom_json
+
+    # Combine requested tags with required tags
+    tags_to_include = requested_tags | REQUIRED_TAGS
+
+    # Filter the DICOM JSON to only include requested + required tags
+    filtered = {tag: value for tag, value in dicom_json.items() if tag in tags_to_include}
+
+    return filtered
+
+
 @router.get("/studies")
 async def qido_rs_studies(
     request: Request,
@@ -831,6 +898,10 @@ async def qido_rs_studies(
             studies[inst.study_instance_uid] = []
         studies[inst.study_instance_uid].append(inst)
 
+    # Get includefield parameter (may be multiple values)
+    includefield_list = request.query_params.getlist("includefield")
+    includefield = includefield_list if includefield_list else None
+
     response = []
     for study_uid, study_instances in studies.items():
         first = study_instances[0]
@@ -860,7 +931,10 @@ async def qido_rs_studies(
                 "Value": [len(study_instances)],
             },  # NumberOfStudyRelatedInstances
         }
-        response.append(study_json)
+
+        # Apply includefield filtering
+        filtered_study_json = filter_dicom_json_by_includefield(study_json, includefield, "study")
+        response.append(filtered_study_json)
 
     return Response(
         content=_json_dumps(response),
@@ -908,6 +982,10 @@ async def qido_rs_series(
             series[inst.series_instance_uid] = []
         series[inst.series_instance_uid].append(inst)
 
+    # Get includefield parameter (may be multiple values)
+    includefield_list = request.query_params.getlist("includefield")
+    includefield = includefield_list if includefield_list else None
+
     response = []
     for series_uid, series_instances in series.items():
         first = series_instances[0]
@@ -925,7 +1003,12 @@ async def qido_rs_series(
                 "Value": [len(series_instances)],
             },  # NumberOfSeriesRelatedInstances
         }
-        response.append(series_json)
+
+        # Apply includefield filtering
+        filtered_series_json = filter_dicom_json_by_includefield(
+            series_json, includefield, "series"
+        )
+        response.append(filtered_series_json)
 
     return Response(
         content=_json_dumps(response),
@@ -971,7 +1054,13 @@ async def qido_rs_instances(
     result = await db.execute(query)
     instances = result.scalars().all()
 
-    response = [inst.dicom_json for inst in instances]
+    # Get includefield parameter (may be multiple values) and apply filtering
+    includefield_list = request.query_params.getlist("includefield")
+    includefield = includefield_list if includefield_list else None
+    response = [
+        filter_dicom_json_by_includefield(inst.dicom_json, includefield, "instance")
+        for inst in instances
+    ]
 
     return Response(
         content=_json_dumps(response),
