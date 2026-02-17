@@ -17,10 +17,9 @@ Implementation Notes:
   but NOT functionally implemented. The response always returns the full default
   set of study-level fields regardless of the includefield value. Tests document
   this deviation with TODO markers.
-- Date range queries: NOT implemented. The _parse_qido_params function only
-  performs exact string matching on StudyDate. DICOM date range syntax
-  (YYYYMMDD-YYYYMMDD) is not parsed; the literal range string is compared
-  against the stored date, yielding no matches. Tests document this with TODOs.
+- Date range queries: Fully implemented per DICOM standard. Supports exact match,
+  ranges (YYYYMMDD-YYYYMMDD), before (-YYYYMMDD), and after (YYYYMMDD-) formats.
+  See test_qido_date_ranges.py for comprehensive date range testing.
 """
 
 import pytest
@@ -462,13 +461,8 @@ def test_search_includefield_invalid_tag_ignored(client: TestClient):
 def test_search_study_date_range(client: TestClient):
     """GET /v2/studies?StudyDate=20260101-20260131 searches a date range.
 
-    TODO: Date range queries are NOT implemented. The _parse_qido_params
-    function treats the range string "20260101-20260131" as a literal exact
-    match against the stored StudyDate column. Since no stored date equals
-    this literal string, no results are returned.
-
-    This test documents the current behavior. When date range support is
-    added, this test should be updated to verify range matching.
+    Date range queries are implemented per DICOM standard.
+    Range format: "YYYYMMDD-YYYYMMDD" (inclusive on both ends).
     """
     # Store studies with dates in January 2026
     dcm_jan15 = DicomFactory.create_ct_image(
@@ -498,13 +492,11 @@ def test_search_study_date_range(client: TestClient):
     assert response.status_code == 200
     studies = response.json()
 
-    # TODO: Date range NOT implemented - returns empty because
-    # "20260101-20260131" is treated as a literal exact match.
-    # When implemented, this should return 2 studies (JAN15 and JAN25).
-    assert len(studies) == 0, (
-        "Date range query returned results unexpectedly. "
-        "If date range support was added, update this test to verify range matching."
-    )
+    # Should return 2 studies within the January range
+    assert len(studies) == 2
+
+    patient_ids = {s["00100020"]["Value"][0] for s in studies}
+    assert patient_ids == {"ADV-DRANGE-JAN15", "ADV-DRANGE-JAN25"}
 
 
 def test_search_study_date_exact(client: TestClient):
@@ -544,9 +536,8 @@ def test_search_study_date_exact(client: TestClient):
 def test_search_study_date_before(client: TestClient):
     """GET /v2/studies?StudyDate=-20260215 searches dates on or before a date.
 
-    TODO: Date range queries (including open-ended ranges) are NOT implemented.
-    The "-20260215" value is treated as a literal exact match, which will never
-    match any stored date. This test documents the current behavior.
+    Open-ended date range queries are implemented per DICOM standard.
+    Format: "-YYYYMMDD" returns dates less than or equal to the specified date.
     """
     dcm_before = DicomFactory.create_ct_image(
         patient_id="ADV-DBEFORE-JAN",
@@ -564,7 +555,7 @@ def test_search_study_date_before(client: TestClient):
     store_dicom(client, dcm_on)
     store_dicom(client, dcm_after)
 
-    # Search with "before" date range
+    # Search with "before or equal" date range
     response = client.get(
         "/v2/studies",
         params={"StudyDate": "-20260215"},
@@ -574,21 +565,18 @@ def test_search_study_date_before(client: TestClient):
     assert response.status_code == 200
     studies = response.json()
 
-    # TODO: Date range NOT implemented - returns empty because
-    # "-20260215" is treated as a literal exact match.
-    # When implemented, this should return 2 studies (JAN and FEB15).
-    assert len(studies) == 0, (
-        "Open-ended date range query returned results unexpectedly. "
-        "If date range support was added, update this test."
-    )
+    # Should return 2 studies (JAN and FEB15)
+    assert len(studies) == 2
+
+    patient_ids = {s["00100020"]["Value"][0] for s in studies}
+    assert patient_ids == {"ADV-DBEFORE-JAN", "ADV-DBEFORE-FEB15"}
 
 
 def test_search_study_date_after(client: TestClient):
     """GET /v2/studies?StudyDate=20260215- searches dates on or after a date.
 
-    TODO: Date range queries (including open-ended ranges) are NOT implemented.
-    The "20260215-" value is treated as a literal exact match, which will never
-    match any stored date. This test documents the current behavior.
+    Open-ended date range queries are implemented per DICOM standard.
+    Format: "YYYYMMDD-" returns dates greater than or equal to the specified date.
     """
     dcm_before = DicomFactory.create_ct_image(
         patient_id="ADV-DAFTER-JAN",
@@ -606,7 +594,7 @@ def test_search_study_date_after(client: TestClient):
     store_dicom(client, dcm_on)
     store_dicom(client, dcm_after)
 
-    # Search with "after" date range
+    # Search with "after or equal" date range
     response = client.get(
         "/v2/studies",
         params={"StudyDate": "20260215-"},
@@ -616,13 +604,11 @@ def test_search_study_date_after(client: TestClient):
     assert response.status_code == 200
     studies = response.json()
 
-    # TODO: Date range NOT implemented - returns empty because
-    # "20260215-" is treated as a literal exact match.
-    # When implemented, this should return 2 studies (FEB15 and MAR).
-    assert len(studies) == 0, (
-        "Open-ended date range query returned results unexpectedly. "
-        "If date range support was added, update this test."
-    )
+    # Should return 2 studies (FEB15 and MAR)
+    assert len(studies) == 2
+
+    patient_ids = {s["00100020"]["Value"][0] for s in studies}
+    assert patient_ids == {"ADV-DAFTER-FEB15", "ADV-DAFTER-MAR"}
 
 
 def test_search_invalid_date_format_returns_400(client: TestClient):

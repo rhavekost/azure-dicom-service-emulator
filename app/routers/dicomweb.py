@@ -1038,11 +1038,59 @@ def _json_dumps(obj) -> bytes:
     return json.dumps(obj, cls=Encoder).encode("utf-8")
 
 
+def parse_date_range(value: str):
+    """Parse DICOM date range query value into SQL filter conditions.
+
+    Supports four date formats per DICOM standard:
+    - "20260115": exact match
+    - "20260110-20260120": range (inclusive on both ends)
+    - "-20260120": before or equal
+    - "20260110-": after or equal
+
+    Args:
+        value: Date query string from QIDO-RS parameter
+
+    Returns:
+        Tuple of (filter_type, start_date, end_date) where:
+        - filter_type: "exact" | "range" | "before" | "after"
+        - start_date: Start date string (None for before queries)
+        - end_date: End date string (None for after queries)
+
+    Notes:
+        - Does not validate date format (DICOM is lenient)
+        - Assumes YYYYMMDD format but accepts any string
+        - Lexicographic comparison works correctly for YYYYMMDD
+    """
+    if "-" not in value:
+        # Exact match: "20260115"
+        return ("exact", value, None)
+
+    if value.startswith("-"):
+        # Before or equal: "-20260120"
+        end_date = value[1:]  # Strip leading hyphen
+        return ("before", None, end_date)
+
+    if value.endswith("-"):
+        # After or equal: "20260110-"
+        start_date = value[:-1]  # Strip trailing hyphen
+        return ("after", start_date, None)
+
+    # Range: "20260110-20260120"
+    parts = value.split("-", 1)  # Split on first hyphen only
+    if len(parts) == 2:
+        start_date, end_date = parts
+        return ("range", start_date, end_date)
+
+    # Fallback: treat as exact match if parsing fails
+    return ("exact", value, None)
+
+
 def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
     """Convert QIDO-RS query parameters to SQLAlchemy filter conditions.
 
     Supports:
     - UID list matching: comma or backslash separated UIDs (for StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID)
+    - Date range matching: DICOM date range syntax (for StudyDate)
     - Wildcard matching: * (zero or more chars), ? (exactly one char)
     - Fuzzy matching: prefix word matching for person names (when fuzzymatching=true)
     - Exact matching: when no wildcards and fuzzymatching=false
@@ -1065,7 +1113,23 @@ def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
                     else:
                         # Single UID - exact match
                         filters.append(column == value)
-                # Wildcard matching takes precedence (for non-UID fields)
+                # Date range matching (for date fields)
+                elif db_column == "study_date":
+                    filter_type, start_date, end_date = parse_date_range(value)
+
+                    if filter_type == "exact":
+                        # Exact date match
+                        filters.append(column == start_date)
+                    elif filter_type == "range":
+                        # Date range (inclusive)
+                        filters.append(and_(column >= start_date, column <= end_date))
+                    elif filter_type == "before":
+                        # Before or equal
+                        filters.append(column <= end_date)
+                    elif filter_type == "after":
+                        # After or equal
+                        filters.append(column >= start_date)
+                # Wildcard matching takes precedence (for non-UID, non-date fields)
                 elif "*" in value or "?" in value:
                     # Translate DICOM wildcards to SQL LIKE pattern
                     pattern = translate_wildcards(value)
