@@ -40,6 +40,15 @@ def test_parse_multipart_empty_body():
     assert len(parts) == 0  # No parts, not an error
 
 
+def test_parse_multipart_no_dicom_parts():
+    """Should skip non-DICOM parts without error."""
+    content = b"--test\r\n" b"Content-Type: text/plain\r\n\r\n" b"Not DICOM\r\n" b"--test--"
+    content_type = "multipart/related; type=application/dicom; boundary=test"
+
+    parts = parse_multipart_related(content, content_type)
+    assert len(parts) == 0  # Non-DICOM parts skipped
+
+
 def test_parse_multipart_malformed_part_headers():
     """Should handle parts with malformed headers gracefully."""
     # Part with no header/body separator

@@ -263,7 +263,7 @@ def test_malformed_boundary_raises_error():
 
 
 def test_nested_boundaries_not_supported():
-    """Nested multipart boundaries are not parsed; inner parts are treated as opaque data."""
+    """Nested multipart boundaries are filtered out (non-DICOM content type)."""
     outer_boundary = "outer"
     inner_boundary = "inner"
     content_type = f"multipart/related; boundary={outer_boundary}"
@@ -286,11 +286,8 @@ def test_nested_boundaries_not_supported():
 
     result = parse_multipart_related(body, content_type)
 
-    # Only the outer part is returned; nested content is opaque
-    assert len(result) == 1
-    assert result[0].content_type == f"multipart/related; boundary={inner_boundary}"
-    # The data contains the inner multipart text as raw bytes, not parsed
-    assert b"innerdata" in result[0].data
+    # Nested multipart parts (non-DICOM content type) are filtered out
+    assert len(result) == 0
 
 
 # ── Content-Type Handling (5 tests) ─────────────────────────────────

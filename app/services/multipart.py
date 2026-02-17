@@ -72,7 +72,8 @@ def parse_multipart_related(body: bytes, content_type: str) -> list[MultipartPar
                 if ct_match:
                     part_content_type = ct_match.group(1).strip()
 
-                if data:
+                # Only include parts with DICOM content type
+                if data and "application/dicom" in part_content_type.lower():
                     result.append(MultipartPart(part_content_type, data))
             except (ValueError, UnicodeDecodeError):
                 # Skip malformed parts, continue processing
