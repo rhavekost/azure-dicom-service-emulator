@@ -248,11 +248,13 @@ async def stow_rs(
 
     # Azure v2: 200 if all succeed, 202 if warnings or partial success, 409 if all fail
     if failures and not stored:
+        # All instances failed (duplicates, validation errors, exceptions)
         status_code = 409
     elif has_warnings or warnings or failures:
         # Return 202 for warnings OR partial success (some stored, some failed)
         status_code = 202
     else:
+        # All succeeded
         status_code = 200
 
     return Response(
