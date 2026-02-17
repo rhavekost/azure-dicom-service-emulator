@@ -792,13 +792,11 @@ def test_retrieve_metadata_requires_json(client: TestClient):
     assert "0020000D" in metadata[0]  # StudyInstanceUID
 
 
-def test_retrieve_unsupported_accept_does_not_reject(client: TestClient):
-    """Unsupported Accept header (e.g., text/plain) -- current behavior.
+def test_retrieve_unsupported_accept_returns_406(client: TestClient):
+    """Unsupported Accept header (e.g., text/plain) returns 406 Not Acceptable.
 
-    Note: The current implementation does not perform strict Accept header
-    validation and will return multipart/related regardless of the Accept value.
-    This test documents the actual behavior.
-    TODO: Should return 406 Not Acceptable per DICOMweb spec.
+    Per DICOMweb specification, WADO-RS endpoints must validate Accept headers
+    and return 406 for unsupported media types.
     """
     study_uid = "1.2.826.0.1.3680043.8.498.20000000000000000000000000000000010"
     series_uid = "1.2.826.0.1.3680043.8.498.20000000000000000000000000000000011"
@@ -818,10 +816,8 @@ def test_retrieve_unsupported_accept_does_not_reject(client: TestClient):
         headers={"Accept": "text/plain"},
     )
 
-    # Current behavior: returns 200 with multipart/related (no strict Accept validation)
-    # TODO: Should return 406 Not Acceptable per DICOMweb spec
-    assert response.status_code == 200
-    assert "multipart/related" in response.headers["content-type"]
+    # Should return 406 Not Acceptable per DICOMweb spec
+    assert response.status_code == 406
 
 
 def test_retrieve_no_accept_defaults_to_multipart(client: TestClient):

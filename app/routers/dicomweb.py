@@ -23,6 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy
 from app.models.events import DicomEvent
+from app.services.accept_validation import (
+    validate_accept_for_rendered,
+    validate_accept_for_retrieve,
+)
 from app.services.dicom_engine import (
     build_store_response,
     dataset_to_dicom_json,
@@ -492,6 +496,10 @@ async def wado_rs_study(
     if "application/dicom+json" in accept or "metadata" in str(request.url):
         return await _retrieve_metadata(db, study_uid=study_uid)
 
+    # Validate Accept header for retrieve
+    if not validate_accept_for_retrieve(accept):
+        raise HTTPException(status_code=406, detail="Not Acceptable")
+
     return await _retrieve_instances(db, study_uid=study_uid)
 
 
@@ -515,6 +523,11 @@ async def wado_rs_series(
     accept = request.headers.get("accept", "")
     if "application/dicom+json" in accept:
         return await _retrieve_metadata(db, study_uid=study_uid, series_uid=series_uid)
+
+    # Validate Accept header for retrieve
+    if not validate_accept_for_retrieve(accept):
+        raise HTTPException(status_code=406, detail="Not Acceptable")
+
     return await _retrieve_instances(db, study_uid=study_uid, series_uid=series_uid)
 
 
@@ -542,6 +555,11 @@ async def wado_rs_instance(
         return await _retrieve_metadata(
             db, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
         )
+
+    # Validate Accept header for retrieve
+    if not validate_accept_for_retrieve(accept):
+        raise HTTPException(status_code=406, detail="Not Acceptable")
+
     return await _retrieve_instances(
         db, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
     )
@@ -670,6 +688,10 @@ async def retrieve_rendered_instance(
     - image/jpeg (default)
     - image/png
     """
+    # Validate Accept header for rendered
+    if not validate_accept_for_rendered(accept):
+        raise HTTPException(status_code=406, detail="Not Acceptable")
+
     # Verify instance exists
     result = await db.execute(
         select(DicomInstance).where(
@@ -738,6 +760,10 @@ async def retrieve_rendered_frame(
     - image/jpeg (default)
     - image/png
     """
+    # Validate Accept header for rendered
+    if not validate_accept_for_rendered(accept):
+        raise HTTPException(status_code=406, detail="Not Acceptable")
+
     # Verify instance exists
     result = await db.execute(
         select(DicomInstance).where(

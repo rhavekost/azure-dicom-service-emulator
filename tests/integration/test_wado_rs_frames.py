@@ -837,13 +837,11 @@ def test_render_invalid_quality_returns_422(patch_dicomweb_storage):
     assert response.status_code == 422
 
 
-def test_render_unsupported_format_returns_jpeg_default(patch_dicomweb_storage):
-    """Accept: image/gif falls through to JPEG (default format).
+def test_render_unsupported_format_returns_406(patch_dicomweb_storage):
+    """Accept: image/gif returns 406 Not Acceptable per DICOMweb spec.
 
-    Note: The current implementation does not return 406 Not Acceptable for
-    unsupported image formats. Instead, it defaults to JPEG when the Accept
-    header doesn't match "image/png".
-    TODO: Should return 406 Not Acceptable per DICOMweb spec for image/gif.
+    Per DICOMweb specification, rendered endpoints must validate Accept headers
+    and return 406 for unsupported image formats.
     """
     client, storage_dir = patch_dicomweb_storage
 
@@ -855,10 +853,8 @@ def test_render_unsupported_format_returns_jpeg_default(patch_dicomweb_storage):
         headers={"Accept": "image/gif"},
     )
 
-    # Current behavior: defaults to JPEG instead of returning 406
-    # TODO: Should return 406 Not Acceptable per DICOMweb spec
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "image/jpeg"
+    # Should return 406 Not Acceptable per DICOMweb spec
+    assert response.status_code == 406
 
 
 def test_rendered_image_dimensions_match(patch_dicomweb_storage):
