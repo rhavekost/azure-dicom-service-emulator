@@ -1,5 +1,7 @@
 """Azure Operations API router."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +18,13 @@ async def get_operation_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the status of an async operation."""
-    query = select(Operation).where(Operation.id == operation_id)
+    # Convert string UUID to UUID object for database query
+    try:
+        operation_uuid = uuid.UUID(operation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid operation ID: {operation_id}")
+
+    query = select(Operation).where(Operation.id == operation_uuid)
     result = await db.execute(query)
     operation = result.scalar_one_or_none()
 
