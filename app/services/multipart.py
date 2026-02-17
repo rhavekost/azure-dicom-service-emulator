@@ -3,6 +3,8 @@
 import re
 from typing import NamedTuple
 
+from fastapi import HTTPException
+
 
 class MultipartPart(NamedTuple):
     """Single part from multipart/related message."""
@@ -21,45 +23,68 @@ def parse_multipart_related(body: bytes, content_type: str) -> list[MultipartPar
 
     Returns:
         List of MultipartPart with content_type and binary data
+
+    Raises:
+        HTTPException: 400 if Content-Type is malformed or boundary is missing
     """
-    # Extract boundary from Content-Type header
-    boundary_match = re.search(r"boundary=([^\s;]+)", content_type)
-    if not boundary_match:
-        raise ValueError("No boundary found in Content-Type header")
+    try:
+        # Extract boundary from Content-Type header
+        boundary_match = re.search(r"boundary=([^\s;]+)", content_type)
+        if not boundary_match:
+            raise HTTPException(
+                status_code=400, detail="Missing boundary parameter in Content-Type header"
+            )
 
-    boundary = boundary_match.group(1).strip('"')
-    boundary_bytes = f"--{boundary}".encode()
+        boundary = boundary_match.group(1).strip('"')
 
-    # Split body by boundary
-    parts = body.split(boundary_bytes)
+        # Validate boundary is not empty after stripping quotes
+        if not boundary:
+            raise HTTPException(
+                status_code=400, detail="Invalid boundary parameter in Content-Type header"
+            )
 
-    result = []
-    for part in parts:
-        if not part or part == b"--\r\n" or part == b"--":
-            continue
+        boundary_bytes = f"--{boundary}".encode()
 
-        # Split headers from body
-        if b"\r\n\r\n" in part:
-            headers, data = part.split(b"\r\n\r\n", 1)
-        elif b"\n\n" in part:
-            headers, data = part.split(b"\n\n", 1)
-        else:
-            continue
+        # Split body by boundary
+        parts = body.split(boundary_bytes)
 
-        # Remove trailing CRLF
-        data = data.rstrip(b"\r\n")
+        result = []
+        for part in parts:
+            if not part or part == b"--\r\n" or part == b"--":
+                continue
 
-        # Extract Content-Type
-        part_content_type = "application/dicom"  # default
-        headers_str = headers.decode("utf-8", errors="ignore")
-        ct_match = re.search(r"Content-Type:\s*([^\r\n]+)", headers_str, re.IGNORECASE)
-        if ct_match:
-            part_content_type = ct_match.group(1).strip()
+            # Split headers from body
+            try:
+                if b"\r\n\r\n" in part:
+                    headers, data = part.split(b"\r\n\r\n", 1)
+                elif b"\n\n" in part:
+                    headers, data = part.split(b"\n\n", 1)
+                else:
+                    continue
 
-        if data:
-            result.append(MultipartPart(part_content_type, data))
+                # Remove trailing CRLF
+                data = data.rstrip(b"\r\n")
 
-    return result
+                # Extract Content-Type
+                part_content_type = "application/dicom"  # default
+                headers_str = headers.decode("utf-8", errors="ignore")
+                ct_match = re.search(r"Content-Type:\s*([^\r\n]+)", headers_str, re.IGNORECASE)
+                if ct_match:
+                    part_content_type = ct_match.group(1).strip()
+
+                if data:
+                    result.append(MultipartPart(part_content_type, data))
+            except (ValueError, UnicodeDecodeError):
+                # Skip malformed parts, continue processing
+                continue
+
+        return result
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
+    except Exception as e:
+        # Catch any other parsing errors
+        raise HTTPException(status_code=400, detail=f"Failed to parse multipart request: {str(e)}")
 
 
 def build_multipart_response(parts: list[tuple[str, bytes]], boundary: str) -> bytes:

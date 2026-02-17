@@ -1,6 +1,7 @@
 """Unit tests for multipart/related parsing (STOW-RS)."""
 
 import pytest
+from fastapi import HTTPException
 
 from app.services.multipart import build_multipart_response, parse_multipart_related
 
@@ -56,15 +57,18 @@ def test_boundary_without_quotes():
 
 
 def test_missing_boundary_raises_error():
-    """Content-Type without boundary parameter raises ValueError."""
+    """Content-Type without boundary parameter raises HTTPException."""
     content_type = "multipart/related; type=application/dicom"
 
-    with pytest.raises(ValueError, match="No boundary found"):
+    with pytest.raises(HTTPException) as exc_info:
         parse_multipart_related(b"some body", content_type)
+
+    assert exc_info.value.status_code == 400
+    assert "boundary" in exc_info.value.detail.lower()
 
 
 def test_empty_boundary_raises_error():
-    """Content-Type with empty boundary (boundary="") raises ValueError.
+    """Content-Type with empty boundary (boundary="") raises HTTPException.
 
     The regex requires at least one non-whitespace/non-semicolon character
     after 'boundary=', so boundary="" will fail to match since the quotes
@@ -79,8 +83,11 @@ def test_empty_boundary_raises_error():
     # Let's test the case where boundary is truly absent from the value.
     content_type = "multipart/related; type=application/dicom"
 
-    with pytest.raises(ValueError, match="No boundary found"):
+    with pytest.raises(HTTPException) as exc_info:
         parse_multipart_related(b"body", content_type)
+
+    assert exc_info.value.status_code == 400
+    assert "boundary" in exc_info.value.detail.lower()
 
 
 # ── Part Extraction (5 tests) ───────────────────────────────────────
@@ -397,9 +404,12 @@ def test_validate_content_type_multipart_related():
     result_other = parse_multipart_related(body_other, content_type_other)
     assert len(result_other) == 1
 
-    # No boundary at all raises ValueError
-    with pytest.raises(ValueError, match="No boundary found"):
+    # No boundary at all raises HTTPException
+    with pytest.raises(HTTPException) as exc_info:
         parse_multipart_related(b"body", "multipart/related; type=application/dicom")
+
+    assert exc_info.value.status_code == 400
+    assert "boundary" in exc_info.value.detail.lower()
 
 
 # ── Bonus: build_multipart_response coverage ────────────────────────
