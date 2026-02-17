@@ -621,9 +621,9 @@ def test_error_response_includes_failed_sop_sequence(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    # Mixed batch: one success, one failure -> status 200 (some stored)
+    # Mixed batch: one success, one failure -> status 202 (partial success)
     # The response should have both ReferencedSOPSequence and FailedSOPSequence
-    assert response.status_code == 200
+    assert response.status_code == 202
     response_json = response.json()
 
     # Verify both sequences present

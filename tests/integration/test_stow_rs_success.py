@@ -223,10 +223,9 @@ def test_store_multiple_instances_in_batch(client: TestClient):
 
 
 def test_post_duplicate_returns_409(client: TestClient):
-    """POST same instance twice - current implementation returns 200 (updates).
+    """POST same instance twice returns 409 Conflict per Azure v2 spec.
 
-    Note: Azure v2 spec requires 409, but current implementation performs update.
-    This test documents actual behavior. Proper 409 enforcement is tracked separately.
+    POST endpoints reject duplicates, unlike PUT which allows upserts.
     """
     # Create DICOM with specific UIDs
     dcm_bytes = DicomFactory.create_ct_image(
@@ -247,23 +246,21 @@ def test_post_duplicate_returns_409(client: TestClient):
     )
     assert response1.status_code == 200
 
-    # Second POST - current implementation returns 200 (performs update)
-    # TODO: Should return 409 per Azure v2 spec
+    # Second POST - should return 409 per Azure v2 spec
     response2 = client.post(
         "/v2/studies",
         content=body,
         headers={"Content-Type": content_type},
     )
-    assert response2.status_code == 200
-    assert "00081199" in response2.json()  # Success sequence present
+    assert response2.status_code == 409
+    assert "00081198" in response2.json()  # FailedSOPSequence present
 
 
 def test_post_duplicate_includes_warning_45070(client: TestClient):
-    """Verify duplicate POST handling - current implementation succeeds without warning.
+    """Verify duplicate POST handling returns 409 with failure code 45070.
 
-    Note: Azure v2 spec requires warning code 45070 (0xAFEE) for duplicates,
-    but current implementation treats POST like PUT (silent update).
-    This test documents actual behavior. Proper warning is tracked separately.
+    Per Azure v2 spec and DICOMweb standard, POST should reject duplicates
+    with HTTP 409 Conflict and include failure code 45070 (Instance already exists).
     """
     dcm_bytes = DicomFactory.create_ct_image(
         patient_id="WARN-TEST-001",
@@ -275,7 +272,7 @@ def test_post_duplicate_includes_warning_45070(client: TestClient):
 
     body, content_type = build_multipart_request([dcm_bytes])
 
-    # First POST
+    # First POST - should succeed
     response1 = client.post(
         "/v2/studies",
         content=body,
@@ -283,19 +280,23 @@ def test_post_duplicate_includes_warning_45070(client: TestClient):
     )
     assert response1.status_code == 200
 
-    # Second POST - current implementation returns 200 (no warning)
-    # TODO: Should return 409 with warning code 45070 per Azure v2 spec
+    # Second POST - should return 409 with failure code 45070
     response2 = client.post(
         "/v2/studies",
         content=body,
         headers={"Content-Type": content_type},
     )
 
-    assert response2.status_code == 200
+    assert response2.status_code == 409
     response_json = response2.json()
-    # Current behavior: successful update with no warnings
-    assert "00081199" in response_json  # ReferencedSOPSequence present
-    # Note: Should have "00081198" (FailedSOPSequence) with code 45070
+    # Verify FailedSOPSequence is present
+    assert "00081198" in response_json  # FailedSOPSequence
+    failed = response_json["00081198"]["Value"][0]
+    assert failed["00081197"]["Value"][0] == 45070  # Instance already exists
+    assert (
+        failed["00081155"]["Value"][0]
+        == "1.2.826.0.1.3680043.8.498.30450704507045070450704507045070450"
+    )  # SOP Instance UID
 
 
 def test_put_duplicate_returns_200(client: TestClient):
