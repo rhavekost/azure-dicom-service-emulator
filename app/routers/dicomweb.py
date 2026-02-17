@@ -1160,17 +1160,8 @@ async def _delete_instances(
     if not instances:
         raise HTTPException(status_code=404, detail="No matching instances found")
 
-    # Track instances for event publishing (need data before deletion)
+    # Track instances with feed_entry for event publishing (need data before deletion)
     deleted_instances_data = []
-    for inst in instances:
-        deleted_instances_data.append(
-            {
-                "study_uid": inst.study_instance_uid,
-                "series_uid": inst.series_instance_uid,
-                "instance_uid": inst.sop_instance_uid,
-                "sequence_number": inst.id,
-            }
-        )
 
     for inst in instances:
         # Add change feed entry for deletion
@@ -1182,6 +1173,18 @@ async def _delete_instances(
             state="current",
         )
         db.add(feed_entry)
+
+        # Track instance data with feed_entry for event publishing
+        deleted_instances_data.append(
+            (
+                {
+                    "study_uid": inst.study_instance_uid,
+                    "series_uid": inst.series_instance_uid,
+                    "instance_uid": inst.sop_instance_uid,
+                },
+                feed_entry,
+            )
+        )
 
         # Mark previous feed entries
         await _mark_previous_feed_entries(db, inst.sop_instance_uid)
@@ -1195,7 +1198,7 @@ async def _delete_instances(
     await db.commit()
 
     # Publish DicomImageDeleted events (best-effort, after commit)
-    for inst_data in deleted_instances_data:
+    for inst_data, feed_entry in deleted_instances_data:
         try:
             from main import get_event_manager
 
@@ -1204,7 +1207,7 @@ async def _delete_instances(
                 study_uid=inst_data["study_uid"],
                 series_uid=inst_data["series_uid"],
                 instance_uid=inst_data["instance_uid"],
-                sequence_number=inst_data["sequence_number"],
+                sequence_number=feed_entry.sequence,  # Use ChangeFeedEntry sequence (int)
                 service_url=str(request.base_url).rstrip("/"),
             )
             await event_manager.publish(event)
