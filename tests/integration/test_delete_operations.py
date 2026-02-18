@@ -139,9 +139,9 @@ def test_delete_study_removes_filesystem_files(client: TestClient):
     )
     store_dicom(client, dcm)
 
-    # Verify file exists on disk
+    # Verify file exists on disk (new subdirectory structure)
     storage_dir = get_storage_dir(client)
-    file_path = os.path.join(storage_dir, study_uid, series_uid, f"{sop_uid}.dcm")
+    file_path = os.path.join(storage_dir, study_uid, series_uid, sop_uid, "instance.dcm")
     assert os.path.exists(file_path), f"File should exist before deletion at {file_path}"
 
     # Delete study
@@ -272,9 +272,9 @@ def test_delete_series_removes_files(client: TestClient):
     )
     store_dicom(client, dcm)
 
-    # Verify file exists on disk
+    # Verify file exists on disk (new subdirectory structure)
     storage_dir = get_storage_dir(client)
-    file_path = os.path.join(storage_dir, study_uid, series_uid, f"{sop_uid}.dcm")
+    file_path = os.path.join(storage_dir, study_uid, series_uid, sop_uid, "instance.dcm")
     assert os.path.exists(file_path), "File should exist before deletion"
 
     # Delete series
@@ -404,9 +404,9 @@ def test_delete_instance_removes_file(client: TestClient):
     )
     store_dicom(client, dcm)
 
-    # Verify file exists on disk
+    # Verify file exists on disk (new subdirectory structure)
     storage_dir = get_storage_dir(client)
-    file_path = os.path.join(storage_dir, study_uid, series_uid, f"{sop_uid}.dcm")
+    file_path = os.path.join(storage_dir, study_uid, series_uid, sop_uid, "instance.dcm")
     assert os.path.exists(file_path), "File should exist before deletion"
 
     # Delete instance

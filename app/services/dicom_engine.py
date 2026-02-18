@@ -191,10 +191,12 @@ def store_instance(data: bytes, ds: Dataset) -> str:
     _validate_uid(series_uid)
     _validate_uid(sop_uid)
 
-    study_dir = os.path.join(STORAGE_DIR, study_uid, series_uid)
-    os.makedirs(study_dir, exist_ok=True)
+    # Create instance directory: {storage}/{study}/{series}/{sop}/
+    instance_dir = os.path.join(STORAGE_DIR, study_uid, series_uid, sop_uid)
+    os.makedirs(instance_dir, exist_ok=True)
 
-    file_path = os.path.join(study_dir, f"{sop_uid}.dcm")
+    # Store as instance.dcm (consistent with frame_cache expectations)
+    file_path = os.path.join(instance_dir, "instance.dcm")
     with open(file_path, "wb") as f:
         f.write(data)
 

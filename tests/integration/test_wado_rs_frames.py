@@ -12,7 +12,6 @@ windowing.
 
 import io
 import re
-import shutil
 from io import BytesIO
 from pathlib import Path
 
@@ -76,13 +75,6 @@ def store_dicom_for_frames(
     """
     store_response = store_dicom(client, dicom_bytes)
     study_uid, series_uid, sop_uid = extract_uids_from_store_response(store_response)
-
-    # Copy file from dicom_engine layout to frame_cache layout
-    src = storage_dir / study_uid / series_uid / f"{sop_uid}.dcm"
-    dst_dir = storage_dir / study_uid / series_uid / sop_uid
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / "instance.dcm"
-    shutil.copy2(str(src), str(dst))
 
     return study_uid, series_uid, sop_uid
 

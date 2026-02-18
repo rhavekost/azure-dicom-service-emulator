@@ -7,7 +7,6 @@ Per DICOMweb standard, WADO-RS endpoints must validate Accept headers and
 return 406 for unsupported media types.
 """
 
-import shutil
 from pathlib import Path
 
 import pytest
@@ -102,13 +101,6 @@ def store_dicom_for_rendered(
     study_uid = url_parts[3]
     series_uid = url_parts[5]
     sop_uid = url_parts[7]
-
-    # Copy file from dicom_engine layout to rendered endpoint layout
-    src = storage_dir / study_uid / series_uid / f"{sop_uid}.dcm"
-    dst_dir = storage_dir / study_uid / series_uid / sop_uid
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / "instance.dcm"
-    shutil.copy2(str(src), str(dst))
 
     return study_uid, series_uid, sop_uid
 

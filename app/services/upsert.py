@@ -138,7 +138,7 @@ async def store_instance(
     instance_dir.mkdir(parents=True, exist_ok=True)
 
     # Write DICOM file
-    file_name = f"{sop_uid}.dcm"
+    file_name = "instance.dcm"  # Consistent with dicom_engine and frame_cache
     file_path = instance_dir / file_name
     file_path.write_bytes(dcm_data["file_data"])
 
