@@ -112,13 +112,11 @@ def test_store_missing_series_instance_uid_fails(client: TestClient):
 
 
 def test_store_missing_patient_id_succeeds(client: TestClient):
-    """Missing PatientID (0010,0020) -- NOT a required attribute in current implementation.
+    """Missing PatientID (0010,0020) returns 202 with warning.
 
-    Current behavior: PatientID is a searchable attribute, not a required attribute.
+    Azure v2 behavior: PatientID is a searchable attribute. Missing searchable
+    attributes trigger warnings (WarningReason 0xB006) and return HTTP 202.
     The instance stores successfully with a null patient_id in the database.
-
-    TODO: Azure v2 spec treats PatientID as required for storage. The emulator
-    should be updated to validate PatientID and return 409 when missing.
     """
     # Create DICOM without PatientID by creating a valid one and removing PatientID
     dcm_bytes = DicomFactory.create_invalid_dicom(missing_tags=["PatientID"])
@@ -130,21 +128,19 @@ def test_store_missing_patient_id_succeeds(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    # Current behavior: succeeds (200) because PatientID is not in required list
-    # TODO: Should return 409 per Azure v2 spec
-    assert response.status_code == 200
+    # Azure v2 behavior: Returns 202 with warning for missing searchable attribute
+    assert response.status_code == 202
     response_json = response.json()
     assert "00081199" in response_json  # Successfully stored
+    assert "00081196" in response_json  # WarningReason present
 
 
 def test_store_missing_modality_succeeds(client: TestClient):
-    """Missing Modality (0008,0060) -- NOT a required attribute in current implementation.
+    """Missing Modality (0008,0060) returns 202 with warning.
 
-    Current behavior: Modality is a searchable attribute, not a required attribute.
+    Azure v2 behavior: Modality is a searchable attribute. Missing searchable
+    attributes trigger warnings (WarningReason 0xB006) and return HTTP 202.
     The instance stores successfully with a null modality in the database.
-
-    TODO: Azure v2 spec treats Modality as required for storage. The emulator
-    should be updated to validate Modality and return 409 when missing.
     """
     dcm_bytes = DicomFactory.create_invalid_dicom(missing_tags=["Modality"])
     body, content_type = build_multipart_request([dcm_bytes])
@@ -155,11 +151,11 @@ def test_store_missing_modality_succeeds(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    # Current behavior: succeeds (200) because Modality is not in required list
-    # TODO: Should return 409 per Azure v2 spec
-    assert response.status_code == 200
+    # Azure v2 behavior: Returns 202 with warning for missing searchable attribute
+    assert response.status_code == 202
     response_json = response.json()
     assert "00081199" in response_json  # Successfully stored
+    assert "00081196" in response_json  # WarningReason present
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -167,15 +163,12 @@ def test_store_missing_modality_succeeds(client: TestClient):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def test_store_missing_patient_name_returns_200(client: TestClient):
-    """Missing PatientName -- instance stores successfully.
+def test_store_missing_patient_name_returns_202(client: TestClient):
+    """Missing PatientName returns 202 with warning.
 
-    Current behavior: PatientName is a searchable attribute. Missing searchable
-    attributes do not trigger warnings in the current implementation.
+    Azure v2 behavior: PatientName is a searchable attribute. Missing searchable
+    attributes trigger warnings (WarningReason 0xB006) and return HTTP 202.
     The instance is stored with null patient_name.
-
-    TODO: Azure v2 spec returns HTTP 202 with WarningReason tag when searchable
-    attributes are missing. Current implementation returns 200 with no warning.
     """
     # Create DICOM without PatientName
     dcm_bytes = DicomFactory.create_invalid_dicom(missing_tags=["PatientName"])
@@ -187,20 +180,19 @@ def test_store_missing_patient_name_returns_200(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    # Current behavior: 200 (no warnings for missing searchable attributes)
-    # TODO: Should return 202 per Azure v2 spec
-    assert response.status_code == 200
+    # Azure v2 behavior: Returns 202 with warning for missing searchable attribute
+    assert response.status_code == 202
     response_json = response.json()
     assert "00081199" in response_json  # Successfully stored
+    assert "00081196" in response_json  # WarningReason present
 
 
-def test_store_missing_study_date_returns_200(client: TestClient):
-    """Missing StudyDate -- instance stores with null study_date.
+def test_store_missing_study_date_returns_202(client: TestClient):
+    """Missing StudyDate returns 202 with warning.
 
-    Current behavior: StudyDate is a searchable attribute. Missing searchable
-    attributes do not trigger warnings. The instance is stored with null study_date.
-
-    TODO: Azure v2 spec returns HTTP 202 with warning for missing searchable attributes.
+    Azure v2 behavior: StudyDate is a searchable attribute. Missing searchable
+    attributes trigger warnings (WarningReason 0xB006) and return HTTP 202.
+    The instance is stored with null study_date.
     """
     # Create DICOM without StudyDate
     dcm_bytes = DicomFactory.create_invalid_dicom(missing_tags=["StudyDate"])
@@ -212,11 +204,11 @@ def test_store_missing_study_date_returns_200(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    # Current behavior: 200 (no warnings)
-    # TODO: Should return 202 per Azure v2 spec
-    assert response.status_code == 200
+    # Azure v2 behavior: Returns 202 with warning for missing searchable attribute
+    assert response.status_code == 202
     response_json = response.json()
-    assert "00081199" in response_json
+    assert "00081199" in response_json  # Successfully stored
+    assert "00081196" in response_json  # WarningReason present
 
 
 def test_store_invalid_study_date_format_returns_200(client: TestClient):
@@ -283,14 +275,11 @@ def test_response_includes_warning_reason_tag(client: TestClient):
 
 
 def test_multiple_warnings_not_aggregated(client: TestClient):
-    """Multiple missing searchable attributes -- all stored without warnings.
+    """Multiple missing searchable attributes return 202 with warnings.
 
-    Current behavior: No searchable attribute warnings are generated, so there are
-    no warnings to aggregate. All instances with missing searchable attributes
-    are stored successfully.
-
-    TODO: Azure v2 spec should return 202 with aggregated warnings for all
-    missing/invalid searchable attributes in a single response.
+    Azure v2 behavior: Missing searchable attributes generate warnings
+    (WarningReason 0xB006) and return HTTP 202. All instances with missing
+    searchable attributes are stored successfully with warnings.
     """
     # Create DICOM missing multiple searchable attributes
     dcm_bytes = DicomFactory.create_invalid_dicom(
@@ -304,12 +293,11 @@ def test_multiple_warnings_not_aggregated(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    # Current behavior: 200 with no warnings
-    # TODO: Should return 202 with aggregated warnings per Azure v2 spec
-    assert response.status_code == 200
+    # Azure v2 behavior: Returns 202 with warnings for missing searchable attributes
+    assert response.status_code == 202
     response_json = response.json()
     assert "00081199" in response_json  # Successfully stored
-    assert "00081196" not in response_json  # No WarningReason tag
+    assert "00081196" in response_json  # WarningReason tag present
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -470,14 +458,11 @@ def test_store_text_file_as_dicom_fails(client: TestClient):
 
 
 def test_store_missing_boundary_fails(client: TestClient):
-    """Content-Type without boundary parameter should fail.
+    """Content-Type without boundary parameter returns 400 Bad Request.
 
-    The parse_multipart_related() function raises ValueError when no boundary
-    is found in the Content-Type header. This exception is unhandled by the
-    endpoint and propagates as an uncaught exception.
-
-    TODO: The endpoint should catch ValueError from multipart parsing and
-    return 400 Bad Request instead of raising an unhandled exception.
+    Azure v2 behavior: The endpoint validates the Content-Type header and
+    catches ValueError from multipart parsing, returning HTTP 400 Bad Request
+    when the boundary parameter is missing.
     """
     dcm_bytes = DicomFactory.create_ct_image(
         patient_id="NO-BOUNDARY-001",
@@ -489,39 +474,36 @@ def test_store_missing_boundary_fails(client: TestClient):
     body += dcm_bytes + b"\r\n"
     body += b"--boundary123--\r\n"
 
-    # Current behavior: ValueError raised from parse_multipart_related is unhandled
-    # TODO: Should return 400 Bad Request
-    with pytest.raises(ValueError, match="No boundary found"):
-        client.post(
-            "/v2/studies",
-            content=body,
-            headers={"Content-Type": 'multipart/related; type="application/dicom"'},
-        )
+    # Azure v2 behavior: Returns 400 Bad Request for missing boundary
+    response = client.post(
+        "/v2/studies",
+        content=body,
+        headers={"Content-Type": 'multipart/related; type="application/dicom"'},
+    )
+    assert response.status_code == 400
+    assert "boundary" in response.text.lower()
 
 
 def test_store_invalid_content_type_fails(client: TestClient):
-    """Non-multipart Content-Type should fail.
+    """Non-multipart Content-Type returns 400 Bad Request.
 
-    When Content-Type is not multipart/related, the boundary extraction
-    in parse_multipart_related() will fail with ValueError because no
-    boundary parameter is present.
-
-    TODO: The endpoint should validate Content-Type is multipart/related
-    before attempting to parse, returning 415 Unsupported Media Type.
+    Azure v2 behavior: The endpoint validates the Content-Type header and
+    catches ValueError from multipart parsing, returning HTTP 400 Bad Request
+    when Content-Type is not multipart/related.
     """
     dcm_bytes = DicomFactory.create_ct_image(
         patient_id="BAD-CT-001",
         with_pixel_data=False,
     )
 
-    # Current behavior: ValueError raised from parse_multipart_related is unhandled
-    # TODO: Should return 415 Unsupported Media Type
-    with pytest.raises(ValueError, match="No boundary found"):
-        client.post(
-            "/v2/studies",
-            content=dcm_bytes,
-            headers={"Content-Type": "application/dicom"},
-        )
+    # Azure v2 behavior: Returns 400 Bad Request for invalid Content-Type
+    response = client.post(
+        "/v2/studies",
+        content=dcm_bytes,
+        headers={"Content-Type": "application/dicom"},
+    )
+    assert response.status_code == 400
+    assert "boundary" in response.text.lower()
 
 
 def test_store_malformed_multipart_fails(client: TestClient):
