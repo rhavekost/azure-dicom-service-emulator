@@ -24,13 +24,24 @@ def stored_instance(client, tmp_path, monkeypatch):
 
     Yields a dict with study_uid, series_uid, sop_uid.
     Uses the existing `client` fixture from tests/conftest.py.
+
+    Also patches the dicomweb router's module-level DICOM_STORAGE_DIR and
+    frame_cache so that WADO-RS retrieve endpoints read from the same
+    temporary storage directory used during the store operation.
     """
+    from pathlib import Path
+
+    import app.routers.dicomweb as dicomweb_module
     import app.services.dicom_engine as dicom_engine
+    from app.services.frame_cache import FrameCache
 
     storage_dir = tmp_path / "dicom_storage"
     storage_dir.mkdir(exist_ok=True)
+    storage_path = Path(str(storage_dir))
     monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
     monkeypatch.setenv("DICOM_STORAGE_DIR", str(storage_dir))
+    monkeypatch.setattr(dicomweb_module, "DICOM_STORAGE_DIR", storage_path)
+    monkeypatch.setattr(dicomweb_module, "frame_cache", FrameCache(storage_path))
 
     study_uid = generate_uid()
     series_uid = generate_uid()
