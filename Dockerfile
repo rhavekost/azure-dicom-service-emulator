@@ -23,6 +23,14 @@ RUN uv sync --frozen --no-dev
 # ── Runtime Stage ──────────────────────────────────────────
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.title="Azure DICOM Service Emulator" \
+      org.opencontainers.image.description="Local drop-in replacement for Azure Health Data Services DICOM Service. For development, testing, and CI/CD." \
+      org.opencontainers.image.url="https://hub.docker.com/r/rhavekost/azure-dicom-service-emulator" \
+      org.opencontainers.image.source="https://github.com/rhavekost/azure-dicom-service-emulator" \
+      org.opencontainers.image.documentation="https://github.com/rhavekost/azure-dicom-service-emulator#readme" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="KostLabs"
+
 WORKDIR /app
 
 # Install curl for health checks
