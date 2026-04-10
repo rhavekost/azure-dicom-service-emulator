@@ -1,5 +1,7 @@
 """Unit tests for debug endpoints."""
 
+import asyncio
+
 import pytest
 
 from app.models.events import DicomEvent
@@ -27,26 +29,10 @@ def client_with_event_manager(client, monkeypatch):
     in_memory_provider = InMemoryEventProvider()
     event_manager = EventManager(providers=[in_memory_provider])
 
-    import app.routers.debug as debug_module
-
-    monkeypatch.setattr(
-        debug_module,
-        "get_event_manager",
-        lambda: event_manager,
-        raising=False,
-    )
-
-    # Also patch the import inside the function (it uses `from main import get_event_manager`)
     import main
 
     monkeypatch.setattr(main, "event_manager", event_manager)
-    # Override the function itself so the `from main import get_event_manager` inside the handler works
-    original_get = main.get_event_manager
-
-    def patched_get():
-        return event_manager
-
-    monkeypatch.setattr(main, "get_event_manager", patched_get)
+    monkeypatch.setattr(main, "get_event_manager", lambda: event_manager)
 
     return client, in_memory_provider
 
@@ -73,7 +59,7 @@ def test_get_debug_events_with_events_returns_count(client_with_event_manager):
         sequence_number=1,
         service_url="http://localhost:8080",
     )
-    provider.events.append(event)
+    asyncio.run(provider.publish(event))
 
     response = test_client.get("/debug/events")
     assert response.status_code == 200
@@ -94,7 +80,7 @@ def test_delete_debug_events_clears_provider(client_with_event_manager):
         sequence_number=1,
         service_url="http://localhost:8080",
     )
-    provider.events.append(event)
+    asyncio.run(provider.publish(event))
     assert len(provider.events) == 1
 
     response = test_client.delete("/debug/events")

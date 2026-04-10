@@ -106,7 +106,7 @@ def test_cancel_workitem(client):
     assert client.post("/v2/workitems", json=payload).status_code == 201
     cancel_payload = {"00741000": {"vr": "CS", "Value": ["CANCELED"]}}
     response = client.post(f"/v2/workitems/{uid}/cancelrequest", json=cancel_payload)
-    assert response.status_code in (200, 202, 204)
+    assert response.status_code == 202
 
 
 def test_subscription_endpoints_return_501(client):
