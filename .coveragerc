@@ -1,5 +1,6 @@
 [run]
 source = app
+concurrency = thread
 omit =
     */tests/*
     */venv/*
