@@ -82,6 +82,49 @@ docker compose -f docker-compose.with-orthanc.yml up -d
 # Orthanc:  http://localhost:8042 (Orthanc Explorer)
 ```
 
+## Docker Hub
+
+The emulator is published as a multi-arch image (amd64 + arm64) on Docker Hub.
+
+### Pull the image
+
+```bash
+docker pull rhavekost/azure-dicom-service-emulator:latest
+```
+
+### Run with Docker Compose (recommended)
+
+The easiest way to start the full stack (emulator + PostgreSQL + Azurite):
+
+```bash
+# Download the compose file
+curl -O https://raw.githubusercontent.com/rhavekost/azure-dicom-service-emulator/main/docker-compose.yml
+
+# Start all services
+docker compose up -d
+
+# Verify
+curl http://localhost:8081/health
+```
+
+### Run standalone (bring your own PostgreSQL)
+
+```bash
+docker run -d \
+  --name dicom-emulator \
+  -p 8080:8080 \
+  -e DATABASE_URL=postgresql+asyncpg://user:pass@your-postgres:5432/dicom_db \
+  -v dicom-data:/data/dicom \
+  rhavekost/azure-dicom-service-emulator:latest
+```
+
+### Image tags
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Latest stable release |
+| `v1.0.0`, `v1.1.0`, etc. | Pinned semantic versions (recommended for production use) |
+
 ## Run Smoke Tests
 
 ```bash
@@ -171,6 +214,7 @@ curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instanc
 |---------------------|---------|-------------|
 | `DATABASE_URL` | `postgresql+asyncpg://emulator:emulator@postgres:5432/dicom_emulator` | PostgreSQL connection |
 | `DICOM_STORAGE_DIR` | `/data/dicom` | Where DCM files are stored |
+| `EVENT_PROVIDERS` | (empty) | JSON array of event provider configs. See `docker-compose.yml` for Azure Storage Queue example. |
 
 ## Storage Layout
 
@@ -340,6 +384,39 @@ See [tests/README.md](tests/README.md) for complete testing guide.
 - Data Partitioning
 - Azure RBAC / Managed Identity auth enforcement
 - UPS-RS subscriptions (endpoints return 501 Not Implemented)
+
+## Troubleshooting
+
+### Port already in use
+
+Edit `docker-compose.yml` and change `"8081:8080"` to another host port (e.g., `"9090:8080"`), then re-run `docker compose up -d`.
+
+### Container exits immediately
+
+Check logs:
+```bash
+docker compose logs emulator
+```
+
+Common causes:
+- PostgreSQL not yet ready — the emulator retries on startup, but if postgres is slow, increase `start_period` in the healthcheck
+- `DATABASE_URL` env var not set when running standalone
+
+### Permission denied on /data/dicom
+
+The container runs as a non-root `dicom` user. If mounting a host directory:
+```bash
+mkdir -p ./dicom-data
+chmod 777 ./dicom-data
+docker run -v ./dicom-data:/data/dicom ...
+```
+
+### Self-signed certificates (TLS proxy setup)
+
+If your client rejects TLS certificates from a reverse proxy in front of the emulator, disable cert verification in your client. For `curl`:
+```bash
+curl -k https://localhost:8081/health
+```
 
 ## Related Projects
 
