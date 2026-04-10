@@ -3,7 +3,6 @@
 import pytest
 
 from app.routers.dicomweb import filter_dicom_json_by_includefield
-from tests.unit.routers.conftest import CONTENT_TYPE, make_multipart  # noqa: F401
 
 pytestmark = pytest.mark.unit
 
