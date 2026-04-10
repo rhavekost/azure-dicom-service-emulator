@@ -16,7 +16,10 @@ async def get_debug_events():
     """
     from main import get_event_manager
 
-    event_manager = get_event_manager()
+    try:
+        event_manager = get_event_manager()
+    except RuntimeError:
+        raise HTTPException(status_code=404, detail="InMemoryEventProvider not configured")
 
     # Find InMemoryEventProvider
     in_memory_provider = None
@@ -38,7 +41,10 @@ async def clear_debug_events():
     """Clear all events from InMemoryEventProvider."""
     from main import get_event_manager
 
-    event_manager = get_event_manager()
+    try:
+        event_manager = get_event_manager()
+    except RuntimeError:
+        raise HTTPException(status_code=404, detail="InMemoryEventProvider not configured")
 
     in_memory_provider = None
     for provider in event_manager.providers:
