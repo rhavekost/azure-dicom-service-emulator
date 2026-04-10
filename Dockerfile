@@ -33,9 +33,6 @@ LABEL org.opencontainers.image.title="Azure DICOM Service Emulator" \
 
 WORKDIR /app
 
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
 # Create non-root user
 RUN groupadd -r dicom && useradd --no-log-init -r -g dicom -d /app -s /sbin/nologin dicom
 
@@ -58,7 +55,7 @@ USER dicom
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD curl -f http://localhost:8080/health || exit 1
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 # Expose port
 EXPOSE 8080
