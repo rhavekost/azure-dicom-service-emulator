@@ -45,4 +45,4 @@ def test_delete_creates_changefeed_entry(client, stored_instance):
     assert cf_response.status_code == 200
     entries = cf_response.json()
     actions = [e["Action"] for e in entries]
-    assert "Delete" in actions or "delete" in actions or any("delet" in a.lower() for a in actions)
+    assert "delete" in actions

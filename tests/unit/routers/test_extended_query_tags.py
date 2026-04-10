@@ -22,7 +22,8 @@ def test_add_tag_returns_202(client):
 
 
 def test_add_tag_creates_entry(client):
-    client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    setup = client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    assert setup.status_code == 202
     response = client.get("/v2/extendedquerytags")
     assert response.status_code == 200
     tags = response.json()
@@ -33,13 +34,15 @@ def test_add_tag_creates_entry(client):
 
 
 def test_add_duplicate_tag_returns_409(client):
-    client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    setup = client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    assert setup.status_code == 202
     response = client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
     assert response.status_code == 409
 
 
 def test_get_tag_by_path(client):
-    client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    setup = client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    assert setup.status_code == 202
     response = client.get("/v2/extendedquerytags/00101010")
     assert response.status_code == 200
     data = response.json()
@@ -53,14 +56,17 @@ def test_get_tag_not_found(client):
 
 
 def test_delete_tag_returns_204(client):
-    client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    setup = client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    assert setup.status_code == 202
     response = client.delete("/v2/extendedquerytags/00101010")
     assert response.status_code == 204
 
 
 def test_delete_tag_removes_from_list(client):
-    client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
-    client.delete("/v2/extendedquerytags/00101010")
+    setup_post = client.post("/v2/extendedquerytags", json=TAG_PAYLOAD)
+    assert setup_post.status_code == 202
+    setup_delete = client.delete("/v2/extendedquerytags/00101010")
+    assert setup_delete.status_code == 204
     response = client.get("/v2/extendedquerytags")
     assert response.json() == []
 
