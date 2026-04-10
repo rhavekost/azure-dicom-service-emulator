@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from typing import Any
 
 from app.services.events.providers import (
     AzureStorageQueueProvider,
@@ -85,7 +86,7 @@ def load_providers_from_config() -> list[EventProvider]:
     return providers
 
 
-def _create_provider(provider_type: str, config: dict[str, any]) -> EventProvider | None:
+def _create_provider(provider_type: str, config: dict[str, Any]) -> EventProvider | None:
     """
     Create a provider instance based on type and configuration.
 

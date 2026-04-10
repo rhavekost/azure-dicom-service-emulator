@@ -106,9 +106,9 @@ async def stow_rs(
     body = await request.body()
     parts = parse_multipart_related(body, content_type)
 
-    stored = []
-    warnings = []
-    failures = []
+    stored: list[dict] = []
+    warnings: list[dict] = []
+    failures: list[dict] = []
     effective_study_uid = study_instance_uid
     has_warnings = False
     # Track instances for event publishing (after commit)

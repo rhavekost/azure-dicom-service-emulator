@@ -102,8 +102,8 @@ async def delete_instance(
                     study_dir.rmdir()
 
     # Delete from database
-    stmt = sql_delete(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
-    await db.execute(stmt)
+    delete_stmt = sql_delete(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+    await db.execute(delete_stmt)
     await db.commit()
 
 

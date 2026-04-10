@@ -25,8 +25,10 @@ class DicomStudy(Base):
 
     __tablename__ = "studies"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    study_instance_uid = Column(String(128), nullable=False, unique=True, index=True)
+    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    study_instance_uid: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True, index=True
+    )
 
     # Expiry support (Phase 3)
     expires_at: Mapped[datetime | None] = mapped_column(
@@ -35,8 +37,10 @@ class DicomStudy(Base):
         index=True,
     )
 
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
@@ -48,35 +52,37 @@ class DicomInstance(Base):
 
     __tablename__ = "dicom_instances"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    study_instance_uid = Column(String(128), nullable=False, index=True)
-    series_instance_uid = Column(String(128), nullable=False, index=True)
-    sop_instance_uid = Column(String(128), nullable=False, unique=True)
-    sop_class_uid = Column(String(128))
-    transfer_syntax_uid = Column(String(128))
+    id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    study_instance_uid: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    series_instance_uid: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    sop_instance_uid: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    sop_class_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    transfer_syntax_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     # Common searchable DICOM tags
-    patient_id = Column(String(64), index=True)
-    patient_name = Column(String(256))
-    study_date = Column(String(8))  # YYYYMMDD
-    study_time = Column(String(14))
-    accession_number = Column(String(64), index=True)
-    study_description = Column(String(256))
-    modality = Column(String(16), index=True)
-    series_description = Column(String(256))
-    series_number = Column(Integer)
-    instance_number = Column(Integer)
-    referring_physician_name = Column(String(256))
+    patient_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    patient_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    study_date: Mapped[str | None] = mapped_column(String(8), nullable=True)  # YYYYMMDD
+    study_time: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    accession_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    study_description: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    modality: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    series_description: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    series_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    instance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    referring_physician_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     # Full DICOM JSON metadata (for /metadata endpoint)
-    dicom_json = Column(JSON, nullable=False)
+    dicom_json: Mapped[dict] = mapped_column(JSON, nullable=False)
 
     # Storage path for the .dcm file on disk
-    file_path = Column(String(512), nullable=False)
-    file_size = Column(BigInteger)
+    file_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    file_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
@@ -93,14 +99,18 @@ class ChangeFeedEntry(Base):
 
     __tablename__ = "change_feed"
 
-    sequence = Column(Integer, primary_key=True, autoincrement=True)
-    study_instance_uid = Column(String(128), nullable=False)
-    series_instance_uid = Column(String(128), nullable=False)
-    sop_instance_uid = Column(String(128), nullable=False)
-    action = Column(String(16), nullable=False)  # create, update, delete
-    state = Column(String(16), nullable=False, default="current")  # current, replaced, deleted
-    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    dicom_metadata = Column(JSON, default=dict)
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    study_instance_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+    series_instance_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+    sop_instance_uid: Mapped[str] = mapped_column(String(128), nullable=False)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)  # create, update, delete
+    state: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="current"
+    )  # current, replaced, deleted
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    dicom_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
 
     __table_args__ = (Index("ix_changefeed_timestamp", "timestamp"),)
 

@@ -157,7 +157,7 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
 
 def extract_searchable_metadata(ds: Dataset) -> dict[str, Any]:
     """Extract searchable tag values into a flat dict for DB columns."""
-    meta = {}
+    meta: dict[str, Any] = {}
     for dicom_keyword, db_column in SEARCHABLE_TAGS.items():
         value = getattr(ds, dicom_keyword, None)
         if value is not None:
@@ -276,7 +276,7 @@ def build_store_response(
 
     Returns a DICOM JSON dataset representing the store response.
     """
-    response = {
+    response: dict[str, Any] = {
         "00081190": {  # RetrieveURL
             "vr": "UR",
             "Value": [f"/v2/studies/{study_uid}"],
