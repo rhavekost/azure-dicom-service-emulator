@@ -51,6 +51,9 @@ dev = [
     # Test Data
     "faker>=22.0.0",
     "factory-boy>=3.3.0",
+
+    # Test Database
+    "aiosqlite>=0.20.0",
 ]
 
 [build-system]
