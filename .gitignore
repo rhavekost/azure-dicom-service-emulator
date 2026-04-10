@@ -47,6 +47,9 @@ Thumbs.db
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 
 # Docker volumes
 .worktrees/
