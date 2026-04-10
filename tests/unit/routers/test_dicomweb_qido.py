@@ -86,7 +86,7 @@ def test_filter_dicom_json_by_includefield_all():
 def test_filter_dicom_json_by_includefield_none():
     dicom_json = {"00100020": {"vr": "LO", "Value": ["P1"]}}
     result = filter_dicom_json_by_includefield(dicom_json, None)
-    assert isinstance(result, dict)
+    assert result == dicom_json
 
 
 def test_filter_dicom_json_by_includefield_specific():
@@ -97,3 +97,5 @@ def test_filter_dicom_json_by_includefield_specific():
     }
     result = filter_dicom_json_by_includefield(dicom_json, "00100020")
     assert "00100020" in result
+    assert "00080060" not in result
+    assert "00201208" not in result
