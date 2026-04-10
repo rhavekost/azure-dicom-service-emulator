@@ -29,7 +29,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN groupadd -r dicom && useradd -r -g dicom -d /app -s /sbin/nologin dicom
+RUN groupadd -r dicom && useradd --no-log-init -r -g dicom -d /app -s /sbin/nologin dicom
 
 # Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv
@@ -44,7 +44,7 @@ ENV PYTHONUNBUFFERED=1
 ENV DICOM_STORAGE_DIR=/data/dicom
 
 # Create storage directory
-RUN mkdir -p /data/dicom && chown -R dicom:dicom /data/dicom
+RUN mkdir -p /data/dicom && chown -R dicom:dicom /data/dicom /app
 
 USER dicom
 
