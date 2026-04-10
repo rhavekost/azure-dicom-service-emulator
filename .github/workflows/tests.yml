@@ -71,6 +71,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_dicom
         run: |
           pytest tests/e2e/ -v -m e2e \
+            --no-cov \
             --junitxml=junit-e2e.xml || [ $? -eq 5 ]
 
       - name: Check coverage threshold
