@@ -98,3 +98,78 @@ def test_filter_dicom_json_by_includefield_specific():
     assert "00100020" in result
     assert "00080060" not in result
     assert "00201208" not in result
+
+
+# ── Root-level QIDO-RS endpoints (Gap 1) ─────────────────────────────
+
+
+def test_get_all_series_empty(client):
+    response = client.get("/v2/series")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_all_series_returns_result(client, stored_instance):
+    response = client.get("/v2/series")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) >= 1
+    # Must contain SeriesInstanceUID tag
+    assert "0020000E" in data[0]
+
+
+def test_get_all_series_filter_by_modality(client, stored_instance):
+    response = client.get("/v2/series?Modality=CT")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) >= 1
+
+
+def test_get_all_series_filter_no_match(client, stored_instance):
+    response = client.get("/v2/series?Modality=NOMATCH")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_all_instances_empty(client):
+    response = client.get("/v2/instances")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_all_instances_returns_result(client, stored_instance):
+    response = client.get("/v2/instances")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) >= 1
+    assert "00080018" in data[0]  # SOPInstanceUID
+
+
+def test_get_all_instances_filter_by_patient_id(client, stored_instance):
+    response = client.get("/v2/instances?PatientID=STORE-001")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) >= 1
+
+
+def test_get_study_instances_empty(client, stored_instance):
+    response = client.get("/v2/studies/1.2.3.nonexistent/instances")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_study_instances_returns_result(client, stored_instance):
+    study = stored_instance["study_uid"]
+    response = client.get(f"/v2/studies/{study}/instances")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) >= 1
+    assert "00080018" in data[0]  # SOPInstanceUID
+
+
+def test_get_study_instances_scoped_to_study(client, stored_instance):
+    study = stored_instance["study_uid"]
+    response = client.get(f"/v2/studies/{study}/instances")
+    assert response.status_code == 200
+    for inst in response.json():
+        assert inst["0020000D"]["Value"][0] == study
