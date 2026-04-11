@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
 from app.database import AsyncSessionLocal, Base, engine
-from app.routers import changefeed, debug, dicomweb, extended_query_tags, operations, ups
+from app.routers import changefeed, debug, extended_query_tags, operations, qido, stow, ups, wado
+from app.routers import delete as delete_router
 from app.services.events import EventManager, load_providers_from_config
 from app.services.expiry import delete_expired_studies
 
@@ -100,7 +101,10 @@ app.add_middleware(
 )
 
 # ── DICOMweb Standard ──────────────────────────────────────────────
-app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])
+app.include_router(stow.router, prefix="/v2", tags=["STOW-RS"])
+app.include_router(wado.router, prefix="/v2", tags=["WADO-RS"])
+app.include_router(qido.router, prefix="/v2", tags=["QIDO-RS"])
+app.include_router(delete_router.router, prefix="/v2", tags=["DELETE"])
 
 # ── Azure Custom APIs ──────────────────────────────────────────────
 app.include_router(changefeed.router, prefix="/v2", tags=["Change Feed"])

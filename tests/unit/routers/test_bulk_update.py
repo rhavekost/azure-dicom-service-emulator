@@ -23,7 +23,7 @@ def store_instance(client, tmp_path, monkeypatch, study_uid=None, patient_id="TE
     """Helper: store one DICOM instance and return its UIDs."""
     from pathlib import Path
 
-    import app.routers.dicomweb as dicomweb_module
+    import app.routers.wado as wado_module
     import app.services.dicom_engine as dicom_engine
     from app.services.frame_cache import FrameCache
 
@@ -32,8 +32,8 @@ def store_instance(client, tmp_path, monkeypatch, study_uid=None, patient_id="TE
     storage_path = Path(str(storage_dir))
     monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
     monkeypatch.setenv("DICOM_STORAGE_DIR", str(storage_dir))
-    monkeypatch.setattr(dicomweb_module, "DICOM_STORAGE_DIR", storage_path)
-    monkeypatch.setattr(dicomweb_module, "frame_cache", FrameCache(storage_path))
+    monkeypatch.setattr(wado_module, "DICOM_STORAGE_DIR", storage_path)
+    monkeypatch.setattr(wado_module, "frame_cache", FrameCache(storage_path))
 
     sop_uid = generate_uid()
     series_uid = generate_uid()

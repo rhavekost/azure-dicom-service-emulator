@@ -378,16 +378,18 @@ def patch_dicomweb_storage(client, monkeypatch, tmp_path):
     Returns:
         Tuple of (client, storage_dir_path)
     """
-    import app.routers.dicomweb as dicomweb_module
+    from pathlib import Path
+
+    import app.routers.wado as wado_module
     from app.services.frame_cache import FrameCache
 
     # The test client fixture already sets up storage in tmp_path/dicom_storage
     # We need to find that directory
     storage_dir = tmp_path / "dicom_storage"
-    storage_path = dicomweb_module.Path(str(storage_dir))
+    storage_path = Path(str(storage_dir))
 
-    monkeypatch.setattr(dicomweb_module, "DICOM_STORAGE_DIR", storage_path)
-    monkeypatch.setattr(dicomweb_module, "frame_cache", FrameCache(storage_path))
+    monkeypatch.setattr(wado_module, "DICOM_STORAGE_DIR", storage_path)
+    monkeypatch.setattr(wado_module, "frame_cache", FrameCache(storage_path))
 
     return client, storage_path
 
