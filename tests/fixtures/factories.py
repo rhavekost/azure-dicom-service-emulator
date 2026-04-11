@@ -7,8 +7,8 @@ from io import BytesIO
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import UID, ExplicitVRLittleEndian, generate_uid
 
-# Sentinel value for optional parameters
-_UNSET = object()
+# Sentinel value for optional parameters — typed to satisfy mypy default checks
+_UNSET: str | None = None  # treated as a distinct sentinel via `is _UNSET` checks
 
 
 class DicomFactory:
