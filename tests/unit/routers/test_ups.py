@@ -265,6 +265,78 @@ def test_update_workitem_updates_patient_name_as_string(client):
     assert response.status_code == 200
 
 
+# ── POST /v2/workitems/{uid}?transaction-uid=xxx (Azure SDK conformance) ──────
+
+
+def test_post_update_workitem_scheduled_returns_200(client):
+    """POST /v2/workitems/{uid} with no transaction-uid updates SCHEDULED workitem."""
+    uid, payload = make_workitem()
+    assert client.post("/v2/workitems", json=payload).status_code == 201
+
+    update_payload = {
+        "00100020": {"vr": "LO", "Value": ["POST-PAT-ID"]},
+    }
+    response = client.post(f"/v2/workitems/{uid}", json=update_payload)
+    assert response.status_code == 200
+
+
+def test_post_update_workitem_in_progress_with_txn_uid_query_param(client):
+    """POST /v2/workitems/{uid}?transaction-uid=xxx updates IN PROGRESS workitem."""
+    uid, payload = make_workitem()
+    assert client.post("/v2/workitems", json=payload).status_code == 201
+
+    # Claim workitem (SCHEDULED → IN PROGRESS)
+    txn_uid = generate_uid()
+    claim_payload = {
+        "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
+    }
+    assert client.put(f"/v2/workitems/{uid}/state", json=claim_payload).status_code == 200
+
+    # Update via POST with transaction-uid as query param (Azure SDK style)
+    update_payload = {
+        "00100020": {"vr": "LO", "Value": ["POST-IN-PROGRESS-PAT"]},
+    }
+    response = client.post(
+        f"/v2/workitems/{uid}?transaction-uid={txn_uid}",
+        json=update_payload,
+    )
+    assert response.status_code == 200
+
+
+def test_post_update_workitem_in_progress_without_txn_uid_returns_409(client):
+    """POST /v2/workitems/{uid} without transaction-uid for IN PROGRESS workitem returns 409."""
+    uid, payload = make_workitem()
+    assert client.post("/v2/workitems", json=payload).status_code == 201
+
+    # Claim workitem
+    txn_uid = generate_uid()
+    claim_payload = {
+        "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
+    }
+    assert client.put(f"/v2/workitems/{uid}/state", json=claim_payload).status_code == 200
+
+    # POST without transaction-uid — should fail
+    update_payload = {
+        "00100020": {"vr": "LO", "Value": ["X"]},
+    }
+    response = client.post(f"/v2/workitems/{uid}", json=update_payload)
+    assert response.status_code == 409
+
+
+def test_put_update_workitem_still_works_backwards_compat(client):
+    """PUT /v2/workitems/{uid} still works for backwards compatibility."""
+    uid, payload = make_workitem()
+    assert client.post("/v2/workitems", json=payload).status_code == 201
+
+    update_payload = {
+        "00100020": {"vr": "LO", "Value": ["PUT-COMPAT-PAT-ID"]},
+    }
+    response = client.put(f"/v2/workitems/{uid}", json=update_payload)
+    assert response.status_code == 200
+
+
 # ── change_workitem_state (PUT /v2/workitems/{uid}/state) ──────────────────
 
 

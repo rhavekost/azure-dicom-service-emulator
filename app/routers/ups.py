@@ -20,23 +20,16 @@ router = APIRouter()
     status_code=201,
     summary="Create workitem (UPS-RS)",
 )
-@router.post(
-    "/workitems/{workitem_uid}",
-    status_code=201,
-    summary="Create workitem (UPS-RS)",
-)
 async def create_workitem(
     request: Request,
-    workitem_uid: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Create UPS workitem.
+    Create UPS workitem (no UID in path).
 
     Workitem UID can be provided in:
     1. Query parameter: /v2/workitems?{workitem_uid}
-    2. Path parameter: /v2/workitems/{workitem_uid}
-    3. Dataset: 00080018 (SOP Instance UID)
+    2. Dataset: 00080018 (SOP Instance UID)
 
     Returns:
     - 201 Created with Location header
@@ -45,16 +38,15 @@ async def create_workitem(
     """
     payload = await request.json()
 
-    # Extract workitem UID from query string if not in path
-    if not workitem_uid:
-        query_string = request.url.query
-        if query_string:
-            # Query parameter format: /v2/workitems?{uid}
-            workitem_uid = query_string
+    workitem_uid = None
+
+    # Extract workitem UID from query string (format: /v2/workitems?{uid})
+    query_string = request.url.query
+    if query_string:
+        workitem_uid = query_string
 
     # If still not found, try to get from dataset
     if not workitem_uid:
-        # Try to get from dataset
         sop_instance_tag = payload.get("00080018", {})
         sop_values = sop_instance_tag.get("Value", [])
         if sop_values:
@@ -63,6 +55,101 @@ async def create_workitem(
     if not workitem_uid:
         raise HTTPException(status_code=400, detail="SOP Instance UID (0008,0018) required")
 
+    return await _do_create_workitem(workitem_uid=workitem_uid, payload=payload, db=db)
+
+
+@router.post(
+    "/workitems/{workitem_uid}",
+    summary="Create or update workitem with UID in path (UPS-RS)",
+)
+async def create_or_update_workitem(
+    workitem_uid: str,
+    request: Request,
+    transaction_uid: str | None = Query(default=None, alias="transaction-uid"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create or update a workitem, routing by existence + ``transaction-uid``.
+
+    - Workitem does **not** exist → create (``transaction-uid`` must be absent).
+    - Workitem **exists** + ``transaction-uid`` present → update (Azure SDK
+      conformance statement §10.5: ``POST /v2/workitems/{uid}?transaction-uid=xxx``).
+    - Workitem **exists** + no ``transaction-uid`` → update SCHEDULED workitem
+      (no transaction lock required for SCHEDULED state).
+
+    Returns:
+    - 201 Created (create path)
+    - 200 OK (update path)
+    - 400/404/409 on errors
+    """
+    payload = await request.json()
+
+    # Check if workitem exists to decide create vs. update
+    result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
+    existing = result.scalar_one_or_none()
+
+    if existing is None:
+        # Create path
+        return await _do_create_workitem(workitem_uid=workitem_uid, payload=payload, db=db)
+
+    # Update path — workitem exists; use query-param transaction-uid if supplied
+    return await _do_update_workitem(
+        workitem_uid=workitem_uid,
+        payload=payload,
+        txn_uid=transaction_uid,
+        db=db,
+    )
+
+
+@router.put(
+    "/workitems/{workitem_uid}",
+    status_code=200,
+    summary="Update workitem (UPS-RS)",
+)
+async def update_workitem(
+    workitem_uid: str,
+    request: Request,
+    transaction_uid: str | None = Query(default=None, alias="transaction-uid"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update UPS workitem attributes (PUT — backwards-compatible).
+
+    Transaction UID can be supplied as:
+    - ``transaction-uid`` query param (Azure SDK style)
+    - ``Transaction-UID`` request header (legacy)
+
+    Transaction UID is required for IN PROGRESS workitems.
+    Cannot update COMPLETED/CANCELED workitems.
+
+    Returns:
+    - 200 OK on success
+    - 400 Bad Request if invalid update
+    - 404 Not Found if workitem doesn't exist
+    - 409 Conflict if transaction UID doesn't match
+    """
+    payload = await request.json()
+
+    # Query param takes precedence; fall back to header for backwards compat.
+    txn_uid = transaction_uid or request.headers.get("Transaction-UID")
+
+    return await _do_update_workitem(
+        workitem_uid=workitem_uid,
+        payload=payload,
+        txn_uid=txn_uid,
+        db=db,
+    )
+
+
+# ── Internal helpers (shared logic) ───────────────────────────────────────────
+
+
+async def _do_create_workitem(
+    workitem_uid: str,
+    payload: dict,
+    db: AsyncSession,
+) -> Response:
+    """Create a new workitem. Raises HTTPException on validation failure."""
     # Validate ProcedureStepState is SCHEDULED
     state_tag = payload.get("00741000", {})
     state_values = state_tag.get("Value", [])
@@ -71,35 +158,20 @@ async def create_workitem(
             status_code=400, detail="ProcedureStepState must be SCHEDULED for new workitem"
         )
 
-    # Validate no Transaction UID
+    # Validate no Transaction UID in payload
     if "00081195" in payload:
         raise HTTPException(
             status_code=400, detail="Transaction UID must not be present in new workitem"
         )
 
-    # Check if workitem already exists
+    # Check for duplicate
     result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail=f"Workitem {workitem_uid} already exists")
 
     # Extract searchable attributes
-    patient_name = None
-    patient_id = None
+    patient_name, patient_id = _extract_searchable(payload)
 
-    patient_name_tag = payload.get("00100010", {})
-    if patient_name_tag.get("Value"):
-        pn_value = patient_name_tag["Value"][0]
-        if isinstance(pn_value, dict):
-            patient_name = pn_value.get("Alphabetic", "")
-        else:
-            patient_name = str(pn_value)
-
-    patient_id_tag = payload.get("00100020", {})
-    patient_id_values = patient_id_tag.get("Value", [])
-    if patient_id_values:
-        patient_id = patient_id_values[0]
-
-    # Create workitem
     workitem = Workitem(
         sop_instance_uid=workitem_uid,
         procedure_step_state="SCHEDULED",
@@ -111,8 +183,95 @@ async def create_workitem(
     db.add(workitem)
     await db.commit()
 
-    # Return 201 with Location header
     return Response(status_code=201, headers={"Location": f"/v2/workitems/{workitem_uid}"})
+
+
+async def _do_update_workitem(
+    workitem_uid: str,
+    payload: dict,
+    txn_uid: str | None,
+    db: AsyncSession,
+) -> Response:
+    """Update an existing workitem. Raises HTTPException on validation failure."""
+    result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
+    workitem = result.scalar_one_or_none()
+
+    if not workitem:
+        raise HTTPException(status_code=404, detail=f"Workitem {workitem_uid} not found")
+
+    # Validate cannot change SOP Instance UID
+    if "00080018" in payload:
+        sop_value = payload["00080018"].get("Value", [])
+        if sop_value and sop_value[0] != workitem_uid:
+            raise HTTPException(status_code=400, detail="Cannot change SOP Instance UID")
+
+    # Validate cannot change state via update endpoint
+    if "00741000" in payload:
+        raise HTTPException(
+            status_code=400, detail="Use state change endpoint to modify ProcedureStepState"
+        )
+
+    # Validate cannot add/change transaction UID in payload
+    if "00081195" in payload:
+        raise HTTPException(status_code=400, detail="Cannot modify Transaction UID")
+
+    # Check terminal states (400 Bad Request)
+    if workitem.procedure_step_state in ["COMPLETED", "CANCELED"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot update workitem in {workitem.procedure_step_state} state",
+        )
+
+    # Validate transaction UID ownership (409 Conflict)
+    from app.services.ups_state_machine import StateTransitionError, can_update_workitem
+
+    try:
+        can_update_workitem(
+            current_state=workitem.procedure_step_state,
+            current_txn_uid=workitem.transaction_uid,
+            provided_txn_uid=txn_uid,
+        )
+    except StateTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    # Merge updates into dataset
+    updated_dataset = workitem.dicom_dataset.copy()
+    updated_dataset.update(payload)
+
+    # Re-extract searchable attributes from merged dataset
+    patient_name, patient_id = _extract_searchable(updated_dataset)
+
+    workitem.dicom_dataset = updated_dataset
+    workitem.patient_name = patient_name
+    workitem.patient_id = patient_id
+
+    await db.commit()
+
+    return Response(status_code=200)
+
+
+def _extract_searchable(dataset: dict) -> tuple[str | None, str | None]:
+    """Extract patient_name and patient_id from a DICOM JSON dataset."""
+    patient_name = None
+    patient_id = None
+
+    patient_name_tag = dataset.get("00100010", {})
+    if patient_name_tag.get("Value"):
+        pn_value = patient_name_tag["Value"][0]
+        if isinstance(pn_value, dict):
+            patient_name = pn_value.get("Alphabetic", "")
+        else:
+            patient_name = str(pn_value)
+
+    patient_id_tag = dataset.get("00100020", {})
+    patient_id_values = patient_id_tag.get("Value", [])
+    if patient_id_values:
+        patient_id = patient_id_values[0]
+
+    return patient_name, patient_id
+
+
+# ── Read ───────────────────────────────────────────────────────────────────────
 
 
 @router.get(
@@ -142,7 +301,6 @@ async def search_workitems(
     """
     query = select(Workitem)
 
-    # Apply filters
     if PatientID:
         query = query.where(Workitem.patient_id == PatientID)
 
@@ -152,18 +310,15 @@ async def search_workitems(
     if ProcedureStepState:
         query = query.where(Workitem.procedure_step_state == ProcedureStepState)
 
-    # Apply pagination
     query = query.offset(offset).limit(limit)
 
-    # Execute query
     result = await db.execute(query)
     workitems = result.scalars().all()
 
-    # Format results (remove transaction UIDs)
     results = []
     for workitem in workitems:
         dataset = workitem.dicom_dataset.copy()
-        dataset.pop("00081195", None)  # Remove transaction UID
+        dataset.pop("00081195", None)  # Never expose transaction UID
         results.append(dataset)
 
     return results
@@ -190,8 +345,7 @@ async def retrieve_workitem(
     """
     Retrieve UPS workitem.
 
-    Returns workitem DICOM dataset.
-    Transaction UID is NEVER included in response (security).
+    Returns workitem DICOM dataset without the Transaction UID (security).
 
     Returns:
     - 200 OK with DICOM JSON
@@ -203,113 +357,13 @@ async def retrieve_workitem(
     if not workitem:
         raise HTTPException(status_code=404, detail=f"Workitem {workitem_uid} not found")
 
-    # Return DICOM dataset WITHOUT transaction UID
     dataset = workitem.dicom_dataset.copy()
-
-    # Remove transaction UID (security)
-    dataset.pop("00081195", None)
+    dataset.pop("00081195", None)  # Never expose transaction UID
 
     return dataset
 
 
-@router.put(
-    "/workitems/{workitem_uid}",
-    status_code=200,
-    summary="Update workitem (UPS-RS)",
-)
-async def update_workitem(
-    workitem_uid: str,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Update UPS workitem attributes.
-
-    Transaction UID required for IN PROGRESS workitems.
-    Cannot update COMPLETED/CANCELED workitems.
-
-    Returns:
-    - 200 OK on success
-    - 400 Bad Request if invalid update
-    - 404 Not Found if workitem doesn't exist
-    - 409 Conflict if transaction UID doesn't match
-    """
-    payload = await request.json()
-
-    # Get workitem
-    result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
-    workitem = result.scalar_one_or_none()
-
-    if not workitem:
-        raise HTTPException(status_code=404, detail=f"Workitem {workitem_uid} not found")
-
-    # Validate cannot change SOP Instance UID
-    if "00080018" in payload:
-        sop_value = payload["00080018"].get("Value", [])
-        if sop_value and sop_value[0] != workitem_uid:
-            raise HTTPException(status_code=400, detail="Cannot change SOP Instance UID")
-
-    # Validate cannot change state via update
-    if "00741000" in payload:
-        raise HTTPException(
-            status_code=400, detail="Use state change endpoint to modify ProcedureStepState"
-        )
-
-    # Validate cannot add/change transaction UID
-    if "00081195" in payload:
-        raise HTTPException(status_code=400, detail="Cannot modify Transaction UID")
-
-    # Check terminal states first (400 Bad Request)
-    if workitem.procedure_step_state in ["COMPLETED", "CANCELED"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot update workitem in {workitem.procedure_step_state} state",
-        )
-
-    # Extract transaction UID from request header
-    txn_uid = request.headers.get("Transaction-UID")
-
-    # Check transaction UID ownership (409 Conflict)
-    from app.services.ups_state_machine import StateTransitionError, can_update_workitem
-
-    try:
-        can_update_workitem(
-            current_state=workitem.procedure_step_state,
-            current_txn_uid=workitem.transaction_uid,
-            provided_txn_uid=txn_uid,
-        )
-    except StateTransitionError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-    # Merge updates into dataset
-    updated_dataset = workitem.dicom_dataset.copy()
-    updated_dataset.update(payload)
-
-    # Re-extract searchable attributes
-    patient_name = None
-    patient_id = None
-
-    patient_name_tag = updated_dataset.get("00100010", {})
-    if patient_name_tag.get("Value"):
-        pn_value = patient_name_tag["Value"][0]
-        if isinstance(pn_value, dict):
-            patient_name = pn_value.get("Alphabetic", "")
-        else:
-            patient_name = str(pn_value)
-
-    patient_id_tag = updated_dataset.get("00100020", {})
-    patient_id_values = patient_id_tag.get("Value", [])
-    if patient_id_values:
-        patient_id = patient_id_values[0]
-
-    # Update workitem
-    workitem.dicom_dataset = updated_dataset
-    workitem.patient_name = patient_name
-    workitem.patient_id = patient_id
-
-    await db.commit()
-
-    return Response(status_code=200)
+# ── State / lifecycle ──────────────────────────────────────────────────────────
 
 
 @router.put(
@@ -334,26 +388,22 @@ async def change_workitem_state(
     """
     payload = await request.json()
 
-    # Get workitem
     result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
     workitem = result.scalar_one_or_none()
 
     if not workitem:
         raise HTTPException(status_code=404, detail=f"Workitem {workitem_uid} not found")
 
-    # Extract new state
     state_tag = payload.get("00741000", {})
     state_values = state_tag.get("Value", [])
     if not state_values:
         raise HTTPException(status_code=400, detail="ProcedureStepState (0074,1000) required")
     new_state = state_values[0]
 
-    # Extract transaction UID
     txn_tag = payload.get("00081195", {})
     txn_values = txn_tag.get("Value", [])
     provided_txn_uid = txn_values[0] if txn_values else None
 
-    # Validate state transition
     from app.services.ups_state_machine import StateTransitionError, validate_state_transition
 
     try:
@@ -366,18 +416,14 @@ async def change_workitem_state(
     except StateTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Update state
     workitem.procedure_step_state = new_state
 
-    # Set transaction UID if claiming (SCHEDULED → IN PROGRESS)
     if new_state == "IN PROGRESS" and workitem.transaction_uid is None:
         workitem.transaction_uid = provided_txn_uid
 
-    # Update dataset state
     updated_dataset = workitem.dicom_dataset.copy()
     updated_dataset["00741000"] = {"vr": "CS", "Value": [new_state]}
 
-    # Add transaction UID to dataset if claiming
     if new_state == "IN PROGRESS" and provided_txn_uid:
         updated_dataset["00081195"] = {"vr": "UI", "Value": [provided_txn_uid]}
 
@@ -400,22 +446,19 @@ async def request_cancellation(
     """
     Request cancellation of SCHEDULED workitem.
 
-    This endpoint allows canceling SCHEDULED workitems without transaction UID.
-    For IN PROGRESS workitems, use state change endpoint with transaction UID.
+    For IN PROGRESS workitems, use the state change endpoint with a transaction UID.
 
     Returns:
     - 202 Accepted on success
     - 400 Bad Request if not SCHEDULED
     - 404 Not Found if workitem doesn't exist
     """
-    # Get workitem
     result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
     workitem = result.scalar_one_or_none()
 
     if not workitem:
         raise HTTPException(status_code=404, detail=f"Workitem {workitem_uid} not found")
 
-    # Validate workitem is SCHEDULED
     if workitem.procedure_step_state != "SCHEDULED":
         raise HTTPException(
             status_code=400,
@@ -423,10 +466,8 @@ async def request_cancellation(
             "Use state change endpoint for IN PROGRESS workitems.",
         )
 
-    # Cancel workitem
     workitem.procedure_step_state = "CANCELED"
 
-    # Update dataset
     updated_dataset = workitem.dicom_dataset.copy()
     updated_dataset["00741000"] = {"vr": "CS", "Value": ["CANCELED"]}
     workitem.dicom_dataset = updated_dataset
