@@ -15,7 +15,7 @@ Endpoints:
 
 import logging
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy import and_, select
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Shared OpenAPI response documentation for WADO-RS retrieve endpoints ──
-_WADO_RETRIEVE_RESPONSES = {
+_WADO_RETRIEVE_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "Multipart DICOM data for matching instances",
         "content": {
@@ -53,7 +53,7 @@ _WADO_RETRIEVE_RESPONSES = {
     }
 }
 
-_WADO_METADATA_RESPONSES = {
+_WADO_METADATA_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "Array of DICOM JSON metadata objects",
         "content": {
@@ -63,7 +63,7 @@ _WADO_METADATA_RESPONSES = {
     304: {"description": "Not Modified (ETag matched)"},
 }
 
-_WADO_FRAMES_RESPONSES = {
+_WADO_FRAMES_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "Raw frame data or multipart frame data",
         "content": {
@@ -75,7 +75,7 @@ _WADO_FRAMES_RESPONSES = {
     }
 }
 
-_WADO_RENDERED_RESPONSES = {
+_WADO_RENDERED_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "Rendered image (JPEG or PNG)",
         "content": {
