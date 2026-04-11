@@ -30,6 +30,9 @@ class DicomStudy(Base):
         String(128), nullable=False, unique=True, index=True
     )
 
+    # Study-level indexed metadata (updated by bulk-update and STOW-RS)
+    patient_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     # Expiry support (Phase 3)
     expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

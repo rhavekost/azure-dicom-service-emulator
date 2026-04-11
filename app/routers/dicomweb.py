@@ -104,6 +104,11 @@ _BULK_UPDATE_TAG_TO_COLUMN: dict[str, str] = {
     "00080060": "modality",
 }
 
+# Subset of the above that also exist as columns on DicomStudy.
+_BULK_UPDATE_TAG_TO_STUDY_COLUMN: dict[str, str] = {
+    "00100020": "patient_id",
+}
+
 
 class BulkUpdateRequest(BaseModel):
     """Request body for POST /v2/studies/$bulkUpdate."""
@@ -196,6 +201,21 @@ async def bulk_update_studies(
             )
             db.add(feed_entry)
             updated_count += 1
+
+        if instances:
+            # Update (or create) the DicomStudy record for this study with
+            # whichever changeDataset tags map to DicomStudy columns.
+            study_result = await db.execute(
+                select(DicomStudy).where(DicomStudy.study_instance_uid == study_uid)
+            )
+            dicom_study = study_result.scalar_one_or_none()
+            if dicom_study is None:
+                dicom_study = DicomStudy(study_instance_uid=study_uid)
+                db.add(dicom_study)
+            for tag, column in _BULK_UPDATE_TAG_TO_STUDY_COLUMN.items():
+                if tag in body.change_dataset:
+                    new_value = _extract_scalar_value(body.change_dataset[tag])
+                    setattr(dicom_study, column, new_value)
 
     # Mark operation as succeeded
     operation.status = "succeeded"

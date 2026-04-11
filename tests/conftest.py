@@ -19,27 +19,33 @@ from tests.fixtures.factories import DicomFactory
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    """Create a TestClient with in-memory test database."""
+def test_engine_and_session(tmp_path, monkeypatch):
+    """Create a shared async engine and session factory for testing.
 
+    Yields a tuple of (engine, session_factory) so that both the HTTP
+    client and direct DB access fixtures can share the same database.
+    """
     # Set DICOM storage directory to temporary path
     storage_dir = tmp_path / "dicom_storage"
     storage_dir.mkdir(exist_ok=True)
 
-    # Monkeypatch the STORAGE_DIR in dicom_engine module
     import app.services.dicom_engine as dicom_engine
 
     monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
-
-    # Also set environment variable for other modules that might use it
     monkeypatch.setenv("DICOM_STORAGE_DIR", str(storage_dir))
 
-    # Create test database engine
     db_path = tmp_path / "test.db"
-    test_engine = create_async_engine(
+    engine = create_async_engine(
         f"sqlite+aiosqlite:///{db_path}", connect_args={"check_same_thread": False}
     )
-    TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    return engine, session_factory
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch, test_engine_and_session):
+    """Create a TestClient with in-memory test database."""
+    test_engine, TestSessionLocal = test_engine_and_session
 
     # Override get_db dependency
     async def override_get_db():
@@ -78,6 +84,20 @@ def client(tmp_path, monkeypatch):
     # Create test client
     with TestClient(test_app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def db_session(test_engine_and_session):
+    """Provide direct async DB session access for tests that need to query the DB.
+
+    Usage in async test::
+
+        async def test_foo(client, db_session):
+            async with db_session() as session:
+                result = await session.execute(select(MyModel).where(...))
+    """
+    _, session_factory = test_engine_and_session
+    return session_factory
 
 
 # ── DICOM Fixture Helpers ──────────────────────────────────────

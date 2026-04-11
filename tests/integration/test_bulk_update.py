@@ -6,7 +6,9 @@ instances in one or more studies in a single operation.
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
+from app.models.dicom import DicomStudy
 from tests.fixtures.factories import DicomFactory
 
 pytestmark = pytest.mark.integration
@@ -24,6 +26,7 @@ STUDY_UID_9 = "2.25.100000000000000000000000000000000009"
 STUDY_UID_10 = "2.25.100000000000000000000000000000000010"
 STUDY_UID_11 = "2.25.100000000000000000000000000000000011"
 STUDY_UID_12 = "2.25.100000000000000000000000000000000012"
+STUDY_UID_13 = "2.25.100000000000000000000000000000000013"
 NONEXISTENT_UID = "9.9.9.99999999"
 
 
@@ -383,3 +386,40 @@ def test_bulk_update_preserves_unmodified_tags(client: TestClient):
 
     # PatientName (00100010) should still be present (not wiped out)
     assert "00100010" in metadata[0]
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  8. DicomStudy record is updated
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+async def test_bulk_update_updates_dicom_study_patient_id(client: TestClient, db_session):
+    """Bulk update should update the DicomStudy.patient_id indexed column.
+
+    After a bulk update that changes PatientID (00100020), the corresponding
+    DicomStudy row for that study_instance_uid must reflect the new value.
+    """
+    dicom_bytes = DicomFactory.create_ct_image(
+        study_uid=STUDY_UID_13,
+        patient_id="STUDY_BEFORE",
+        patient_name="Study^Patient",
+    )
+    store_instance(client, dicom_bytes)
+
+    bulk_update(
+        client,
+        study_uids=[STUDY_UID_13],
+        change_dataset={"00100020": {"vr": "LO", "Value": ["STUDY_AFTER"]}},
+    )
+
+    # Query DicomStudy directly to verify the study-level record was updated.
+    async with db_session() as session:
+        result = await session.execute(
+            select(DicomStudy).where(DicomStudy.study_instance_uid == STUDY_UID_13)
+        )
+        dicom_study = result.scalar_one_or_none()
+
+    assert dicom_study is not None, "DicomStudy record should exist after bulk update"
+    assert (
+        dicom_study.patient_id == "STUDY_AFTER"
+    ), f"DicomStudy.patient_id should be 'STUDY_AFTER', got {dicom_study.patient_id!r}"
