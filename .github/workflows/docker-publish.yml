@@ -36,7 +36,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5 # SHA-pin TODO
+        uses: docker/metadata-action@v6 # SHA-pin TODO
         with:
           images: rhavekost/azure-dicom-service-emulator
           tags: |
