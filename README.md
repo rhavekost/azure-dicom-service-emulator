@@ -403,7 +403,6 @@ See [tests/README.md](tests/README.md) for complete testing guide.
 - [x] Published Docker image on Docker Hub (multi-arch amd64 + arm64)
 - [ ] Event Grid emulation (webhook notifications)
 - [ ] Auth mock (accept any bearer token)
-- [ ] Published Docker image on GHCR
 
 ## Not Emulated (Yet)
 
