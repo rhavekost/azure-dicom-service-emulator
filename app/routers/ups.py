@@ -114,7 +114,10 @@ async def create_or_update_workitem(
             )
         return await _do_create_workitem(workitem_uid=workitem_uid, payload=payload, db=db)
 
-    # Update path — workitem exists; pass resolved transaction UID
+    # Update path — workitem exists; requires transaction-uid to distinguish
+    # from a duplicate create attempt. No txn_uid = duplicate POST → 409.
+    if txn_uid is None:
+        raise HTTPException(status_code=409, detail=f"Workitem {workitem_uid} already exists")
     return await _do_update_workitem(
         workitem_uid=workitem_uid,
         payload=payload,
