@@ -43,7 +43,7 @@ dev = [
 
     # Security
     "bandit>=1.7.6",
-    "safety>=3.0.0",
+    "safety>=3.7.0",
 
     # Test Execution
     "pytest-xdist>=3.5.0",
