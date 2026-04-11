@@ -130,7 +130,7 @@ curl -O https://raw.githubusercontent.com/rhavekost/azure-dicom-service-emulator
 docker compose up -d
 
 # Verify
-curl http://localhost:8081/health
+curl http://localhost:8080/health
 ```
 
 ### Run standalone (bring your own PostgreSQL)
@@ -358,7 +358,7 @@ curl -X POST "http://localhost:8080/v2/workitems/1.2.3.workitem1/cancelrequest"
 
 ## Testing
 
-Comprehensive test suite with 225+ tests and 61%+ code coverage.
+Comprehensive test suite with 750+ tests and 72%+ code coverage.
 
 ```bash
 # Run all tests
@@ -397,11 +397,12 @@ See [tests/README.md](tests/README.md) for complete testing guide.
 - [x] Wildcard matching for QIDO-RS
 - [x] UID list queries for QIDO-RS
 - [x] Worklist Service (UPS-RS) — full CRUD, state machine, search
-- [x] Comprehensive test suite (225+ tests, 61%+ coverage)
+- [x] Bulk Update API — `POST /v2/studies/$bulkUpdate`
+- [x] Comprehensive test suite (750+ tests, 72%+ coverage)
 - [x] CI/CD workflows (tests + security)
+- [x] Published Docker image on Docker Hub (multi-arch amd64 + arm64)
 - [ ] Event Grid emulation (webhook notifications)
 - [ ] Auth mock (accept any bearer token)
-- [ ] Bulk Update API
 - [ ] Published Docker image on GHCR
 
 ## Not Emulated (Yet)
@@ -415,7 +416,7 @@ See [tests/README.md](tests/README.md) for complete testing guide.
 
 ### Port already in use
 
-Edit `docker-compose.yml` and change `"8081:8080"` to another host port (e.g., `"9090:8080"`), then re-run `docker compose up -d`.
+Edit `docker-compose.yml` and change `"8080:8080"` to another host port (e.g., `"9090:8080"`), then re-run `docker compose up -d`.
 
 ### Container exits immediately
 
@@ -441,7 +442,7 @@ docker run -v ./dicom-data:/data/dicom ...
 
 If your client rejects TLS certificates from a reverse proxy in front of the emulator, disable cert verification in your client. For `curl`:
 ```bash
-curl -k https://localhost:8081/health
+curl -k https://localhost:8080/health
 ```
 
 ## Related Projects
