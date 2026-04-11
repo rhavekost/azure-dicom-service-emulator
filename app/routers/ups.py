@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -60,6 +61,7 @@ async def create_workitem(
 
 @router.post(
     "/workitems/{workitem_uid}",
+    status_code=201,
     summary="Create or update workitem with UID in path (UPS-RS)",
 )
 async def create_or_update_workitem(
@@ -78,25 +80,33 @@ async def create_or_update_workitem(
       (no transaction lock required for SCHEDULED state).
 
     Returns:
-    - 201 Created (create path)
-    - 200 OK (update path)
+    - 201 Created (create path); 200 OK (update path — returned via
+      ``Response(status_code=200)``, overriding the decorator default)
     - 400/404/409 on errors
     """
     payload = await request.json()
+
+    # Query param takes precedence; fall back to header for consistency with PUT.
+    txn_uid = transaction_uid or request.headers.get("Transaction-UID")
 
     # Check if workitem exists to decide create vs. update
     result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
     existing = result.scalar_one_or_none()
 
     if existing is None:
-        # Create path
+        # Create path — transaction-uid must not be supplied
+        if txn_uid is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="transaction-uid must not be supplied when creating a workitem",
+            )
         return await _do_create_workitem(workitem_uid=workitem_uid, payload=payload, db=db)
 
-    # Update path — workitem exists; use query-param transaction-uid if supplied
+    # Update path — workitem exists; pass resolved transaction UID
     return await _do_update_workitem(
         workitem_uid=workitem_uid,
         payload=payload,
-        txn_uid=transaction_uid,
+        txn_uid=txn_uid,
         db=db,
     )
 
@@ -164,11 +174,6 @@ async def _do_create_workitem(
             status_code=400, detail="Transaction UID must not be present in new workitem"
         )
 
-    # Check for duplicate
-    result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
-    if result.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"Workitem {workitem_uid} already exists")
-
     # Extract searchable attributes
     patient_name, patient_id = _extract_searchable(payload)
 
@@ -181,7 +186,11 @@ async def _do_create_workitem(
     )
 
     db.add(workitem)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Workitem {workitem_uid} already exists")
 
     return Response(status_code=201, headers={"Location": f"/v2/workitems/{workitem_uid}"})
 
