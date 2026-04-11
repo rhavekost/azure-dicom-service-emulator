@@ -8,6 +8,7 @@ Implements:
 - DELETE: Remove studies/series/instances
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -512,9 +513,10 @@ async def wado_rs_study(
 async def wado_rs_study_metadata(
     study_uid: str,
     db: AsyncSession = Depends(get_db),
+    if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
 ):
     """Retrieve metadata for all instances in a study."""
-    return await _retrieve_metadata(db, study_uid=study_uid)
+    return await _retrieve_metadata(db, study_uid=study_uid, if_none_match=if_none_match)
 
 
 @router.get("/studies/{study_uid}/series/{series_uid}")
@@ -541,9 +543,12 @@ async def wado_rs_series_metadata(
     study_uid: str,
     series_uid: str,
     db: AsyncSession = Depends(get_db),
+    if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
 ):
     """Retrieve metadata for all instances in a series."""
-    return await _retrieve_metadata(db, study_uid=study_uid, series_uid=series_uid)
+    return await _retrieve_metadata(
+        db, study_uid=study_uid, series_uid=series_uid, if_none_match=if_none_match
+    )
 
 
 @router.get("/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}")
@@ -576,10 +581,15 @@ async def wado_rs_instance_metadata(
     series_uid: str,
     instance_uid: str,
     db: AsyncSession = Depends(get_db),
+    if_none_match: Optional[str] = Header(default=None, alias="If-None-Match"),
 ):
     """Retrieve metadata for a single instance."""
     return await _retrieve_metadata(
-        db, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
+        db,
+        study_uid=study_uid,
+        series_uid=series_uid,
+        instance_uid=instance_uid,
+        if_none_match=if_none_match,
     )
 
 
@@ -1358,6 +1368,12 @@ def _json_dumps(obj) -> bytes:
     return json.dumps(obj, cls=Encoder).encode("utf-8")
 
 
+def _compute_etag(content: bytes) -> str:
+    """Return a quoted SHA-256 ETag for *content* (RFC 7232 strong ETag)."""
+    digest = hashlib.sha256(content).hexdigest()
+    return f'"{digest}"'
+
+
 def parse_date_range(value: str):
     """Parse DICOM date range query value into SQL filter conditions.
 
@@ -1469,8 +1485,16 @@ async def _retrieve_metadata(
     study_uid: str | None = None,
     series_uid: str | None = None,
     instance_uid: str | None = None,
+    if_none_match: str | None = None,
 ) -> Response:
-    """Retrieve DICOM JSON metadata for matching instances."""
+    """Retrieve DICOM JSON metadata for matching instances.
+
+    Returns an ETag header computed as a SHA-256 hash of the serialised
+    response body. Honours the If-None-Match request header per RFC 7232:
+    - exact ETag match → 304 Not Modified
+    - wildcard (*) → 304 Not Modified (resource exists)
+    - no match → 200 with full body
+    """
     conditions = []
     if study_uid:
         conditions.append(DicomInstance.study_instance_uid == study_uid)
@@ -1487,10 +1511,18 @@ async def _retrieve_metadata(
         raise HTTPException(status_code=404, detail="No matching instances found")
 
     metadata = [inst.dicom_json for inst in instances]
+    content = _json_dumps(metadata)
+    etag = _compute_etag(content)
+
+    # RFC 7232 § 3.2 — evaluate If-None-Match before sending the body
+    if if_none_match is not None:
+        if if_none_match == "*" or if_none_match == etag:
+            return Response(status_code=304, headers={"ETag": etag})
 
     return Response(
-        content=_json_dumps(metadata),
+        content=content,
         media_type="application/dicom+json",
+        headers={"ETag": etag},
     )
 
 
