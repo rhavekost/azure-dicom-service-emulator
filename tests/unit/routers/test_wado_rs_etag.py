@@ -7,6 +7,10 @@ Covers:
 - If-None-Match with matching ETag → 304 Not Modified (no body)
 - If-None-Match with non-matching ETag → 200 with full body
 - If-None-Match: * (wildcard) → 304 Not Modified when resource exists
+- If-None-Match with multi-value list containing a match → 304
+- If-None-Match with multi-value list containing no match → 200
+- If-None-Match: * on non-existent resource → 404 (RFC 7232: wildcard only
+  matches when resource exists)
 """
 
 import pytest
@@ -177,3 +181,56 @@ class TestETagStability:
         r1 = client.get(_instance_metadata_url(stored_instance))
         r2 = client.get(_instance_metadata_url(stored_instance))
         assert r1.headers["etag"] == r2.headers["etag"]
+
+
+# ── Multi-value If-None-Match (RFC 7232 § 3.2) ───────────────────────
+
+
+class TestMultiValueIfNoneMatch:
+    """If-None-Match may carry a comma-separated list of ETags."""
+
+    def test_multi_value_with_matching_token_returns_304(self, client, stored_instance):
+        """One of the tokens matches the current ETag → 304."""
+        first = client.get(_study_metadata_url(stored_instance))
+        etag = first.headers["etag"]
+
+        response = client.get(
+            _study_metadata_url(stored_instance),
+            headers={"If-None-Match": f'"deadbeef0000000000000000000000000000", {etag}'},
+        )
+        assert response.status_code == 304
+        assert response.content == b""
+        assert "etag" in response.headers
+
+    def test_multi_value_with_no_matching_token_returns_200(self, client, stored_instance):
+        """None of the tokens matches the current ETag → 200 with body."""
+        response = client.get(
+            _study_metadata_url(stored_instance),
+            headers={
+                "If-None-Match": (
+                    '"deadbeef0000000000000000000000000000", '
+                    '"cafebabe0000000000000000000000000000"'
+                )
+            },
+        )
+        assert response.status_code == 200
+        assert len(response.content) > 0
+
+
+# ── Wildcard on non-existent resource ────────────────────────────────
+
+
+class TestWildcardOnNonExistentResource:
+    """RFC 7232: wildcard * only matches when the resource exists.
+
+    The server raises 404 before inspecting If-None-Match, so the
+    wildcard should never produce a 304 for an unknown resource.
+    """
+
+    def test_wildcard_on_nonexistent_study_returns_404(self, client):
+        """GET /v2/studies/<unknown>/metadata with If-None-Match: * → 404."""
+        response = client.get(
+            "/v2/studies/1.2.3.nonexistent/metadata",
+            headers={"If-None-Match": "*"},
+        )
+        assert response.status_code == 404

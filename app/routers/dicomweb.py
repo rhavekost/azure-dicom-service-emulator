@@ -500,6 +500,8 @@ async def wado_rs_study(
     accept = request.headers.get("accept", "")
 
     if "application/dicom+json" in accept or "metadata" in str(request.url):
+        # if_none_match not passed — ETag is returned but If-None-Match caching
+        # is not honoured on Accept-based retrieve paths (only on /metadata endpoints)
         return await _retrieve_metadata(db, study_uid=study_uid)
 
     # Validate Accept header for retrieve
@@ -529,6 +531,8 @@ async def wado_rs_series(
     """Retrieve all instances in a series."""
     accept = request.headers.get("accept", "")
     if "application/dicom+json" in accept:
+        # if_none_match not passed — ETag is returned but If-None-Match caching
+        # is not honoured on Accept-based retrieve paths (only on /metadata endpoints)
         return await _retrieve_metadata(db, study_uid=study_uid, series_uid=series_uid)
 
     # Validate Accept header for retrieve
@@ -562,6 +566,8 @@ async def wado_rs_instance(
     """Retrieve a single DICOM instance."""
     accept = request.headers.get("accept", "")
     if "application/dicom+json" in accept:
+        # if_none_match not passed — ETag is returned but If-None-Match caching
+        # is not honoured on Accept-based retrieve paths (only on /metadata endpoints)
         return await _retrieve_metadata(
             db, study_uid=study_uid, series_uid=series_uid, instance_uid=instance_uid
         )
@@ -1514,9 +1520,11 @@ async def _retrieve_metadata(
     content = _json_dumps(metadata)
     etag = _compute_etag(content)
 
-    # RFC 7232 § 3.2 — evaluate If-None-Match before sending the body
+    # RFC 7232 § 3.2 — evaluate If-None-Match before sending the body.
+    # The header may be a comma-separated list of ETags; parse each token.
     if if_none_match is not None:
-        if if_none_match == "*" or if_none_match == etag:
+        tokens = [t.strip() for t in if_none_match.split(",")]
+        if "*" in tokens or etag in tokens:
             return Response(status_code=304, headers={"ETag": etag})
 
     return Response(
