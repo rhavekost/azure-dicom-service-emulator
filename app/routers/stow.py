@@ -11,6 +11,7 @@ Endpoints:
 
 import logging
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -221,6 +222,236 @@ async def bulk_update_studies(
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  STOW-RS — Shared per-instance processing
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+@dataclass
+class StowResult:
+    """Collected results from processing a batch of DICOM multipart parts."""
+
+    stored: list[dict] = field(default_factory=list)
+    warnings: list[dict] = field(default_factory=list)
+    failures: list[dict] = field(default_factory=list)
+    has_warnings: bool = False
+    effective_study_uid: str | None = None
+    # Pairs of (DicomInstance, ChangeFeedEntry) for post-commit event publishing
+    instances_to_publish: list[tuple] = field(default_factory=list)
+
+
+async def _process_stow_instances(
+    parts: list,
+    db: AsyncSession,
+    *,
+    study_instance_uid: str | None = None,
+    upsert: bool = False,
+) -> StowResult:
+    """Process a list of multipart DICOM parts and store or upsert each instance.
+
+    Args:
+        parts: Parsed multipart parts, each with a ``data`` attribute.
+        db: An open async database session.
+        study_instance_uid: When provided, every part must belong to this study UID;
+            mismatches are recorded as failures.
+        upsert: When ``True`` (PUT semantics) use :func:`upsert_instance` so that
+            existing instances are replaced rather than rejected.  When ``False``
+            (POST semantics) duplicate SOPs are recorded as failures and searchable
+            attribute validation warnings are collected.
+
+    Returns:
+        A :class:`StowResult` with the stored/warning/failure lists and any
+        (instance, feed_entry) pairs that should have events published after the
+        caller commits the session.
+    """
+    result = StowResult(effective_study_uid=study_instance_uid)
+
+    for part in parts:
+        try:
+            ds = parse_dicom(part.data)
+
+            # Validate required attributes — failure for both POST and PUT
+            errors = validate_required_attributes(ds)
+            if errors:
+                result.failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
+                        "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
+                    }
+                )
+                continue
+
+            # POST only: validate searchable attributes (Azure v2 — warnings, not failures)
+            if not upsert:
+                validation_warnings = validate_searchable_attributes(ds)
+                if validation_warnings:
+                    result.has_warnings = True
+                    result.warnings.append({})
+                    sop_uid_temp = str(getattr(ds, "SOPInstanceUID", "unknown"))
+                    logger.warning(
+                        f"Searchable attribute warnings for {sop_uid_temp}: {validation_warnings}"
+                    )
+
+            sop_uid = str(ds.SOPInstanceUID)
+            study_uid = str(ds.StudyInstanceUID)
+            series_uid = str(ds.SeriesInstanceUID)
+
+            # Validate study UID match when provided in URL
+            if study_instance_uid and study_uid != study_instance_uid:
+                result.failures.append(
+                    {
+                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                        "00081155": {"vr": "UI", "Value": [sop_uid]},
+                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
+                    }
+                )
+                continue
+
+            if result.effective_study_uid is None:
+                result.effective_study_uid = study_uid
+
+            # Extract metadata (needed by both paths)
+            dicom_json = dataset_to_dicom_json(ds)
+            searchable = extract_searchable_metadata(ds)
+
+            if upsert:
+                # PUT path: create-or-replace via upsert service
+                dcm_data = {
+                    "file_data": part.data,
+                    "dicom_json": dicom_json,
+                    "metadata": {
+                        "sop_class_uid": str(getattr(ds, "SOPClassUID", "")),
+                        "transfer_syntax_uid": str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
+                        if hasattr(ds, "file_meta")
+                        else None,
+                        **searchable,
+                    },
+                }
+                action = await upsert_instance(
+                    db, study_uid, series_uid, sop_uid, dcm_data, str(DICOM_STORAGE_DIR)
+                )
+
+                feed_entry = ChangeFeedEntry(
+                    study_instance_uid=study_uid,
+                    series_instance_uid=series_uid,
+                    sop_instance_uid=sop_uid,
+                    action=action,
+                    state="current",
+                )
+                db.add(feed_entry)
+
+                if action == "replaced":
+                    await _mark_previous_feed_entries(db, sop_uid)
+
+                # Re-query to get the persisted instance for event publishing
+                inst_result = await db.execute(
+                    select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+                )
+                stored_instance = inst_result.scalar_one_or_none()
+
+            else:
+                # POST path: reject duplicates, then insert
+                existing_check = await db.execute(
+                    select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+                )
+                existing_instance = existing_check.scalar_one_or_none()
+
+                if existing_instance:
+                    result.failures.append(
+                        {
+                            "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                            "00081155": {"vr": "UI", "Value": [sop_uid]},
+                            "00081197": {
+                                "vr": "US",
+                                "Value": [FAILURE_REASON_INSTANCE_ALREADY_EXISTS],
+                            },
+                        }
+                    )
+                    continue
+
+                file_path = await store_instance(part.data, ds)
+                file_size = len(part.data)
+
+                instance = DicomInstance(
+                    study_instance_uid=study_uid,
+                    series_instance_uid=series_uid,
+                    sop_instance_uid=sop_uid,
+                    sop_class_uid=str(getattr(ds, "SOPClassUID", "")),
+                    transfer_syntax_uid=str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
+                    if hasattr(ds, "file_meta")
+                    else None,
+                    dicom_json=dicom_json,
+                    file_path=file_path,
+                    file_size=file_size,
+                    **searchable,
+                )
+                db.add(instance)
+                stored_instance = instance
+
+                feed_entry = ChangeFeedEntry(
+                    study_instance_uid=study_uid,
+                    series_instance_uid=series_uid,
+                    sop_instance_uid=sop_uid,
+                    action="create",
+                    state="current",
+                )
+                db.add(feed_entry)
+
+            result.stored.append(
+                {
+                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
+                    "00081155": {"vr": "UI", "Value": [sop_uid]},
+                    "00081190": {
+                        "vr": "UR",
+                        "Value": [
+                            f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
+                        ],
+                    },
+                }
+            )
+
+            if stored_instance:
+                result.instances_to_publish.append((stored_instance, feed_entry))
+
+        except Exception as e:
+            result.failures.append(
+                {
+                    "00081197": {"vr": "US", "Value": [0xC000]},
+                    "00081196": {"vr": "LO", "Value": [str(e)]},
+                }
+            )
+            result.has_warnings = True
+
+    return result
+
+
+async def _publish_stow_events(
+    instances_to_publish: list[tuple],
+    request: Request,
+) -> None:
+    """Publish DicomImageCreated events for successfully stored instances.
+
+    Best-effort: errors are logged but not re-raised so that the DICOM operation
+    already committed to the database is never rolled back due to an event failure.
+    """
+    for instance, feed_entry in instances_to_publish:
+        try:
+            from main import get_event_manager
+
+            event_manager = get_event_manager()
+            event = DicomEvent.from_instance_created(
+                study_uid=instance.study_instance_uid,
+                series_uid=instance.series_instance_uid,
+                instance_uid=instance.sop_instance_uid,
+                sequence_number=feed_entry.sequence,
+                service_url=str(request.base_url).rstrip("/"),
+            )
+            await event_manager.publish(event)
+        except Exception as e:
+            logger.error(f"Failed to publish event for instance {instance.sop_instance_uid}: {e}")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  STOW-RS — Store Instances
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -243,169 +474,24 @@ async def stow_rs(
     body = await request.body()
     parts = parse_multipart_related(body, content_type)
 
-    stored: list[dict] = []
-    warnings: list[dict] = []
-    failures: list[dict] = []
-    effective_study_uid = study_instance_uid
-    has_warnings = False
-    # Track instances for event publishing (after commit)
-    instances_to_publish = []
-
-    for part in parts:
-        try:
-            ds = parse_dicom(part.data)
-
-            # Validate required attributes
-            errors = validate_required_attributes(ds)
-            if errors:
-                failures.append(
-                    {
-                        "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
-                        "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
-                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
-                    }
-                )
-                continue
-
-            # Validate searchable attributes (Azure v2: warnings, not failures)
-            validation_warnings = validate_searchable_attributes(ds)
-            if validation_warnings:
-                has_warnings = True
-                # Add to warnings list to trigger WarningReason in response
-                # We add a placeholder dict since build_store_response only checks truthiness
-                warnings.append({})
-                # Log warnings but continue storing
-                sop_uid_temp = str(getattr(ds, "SOPInstanceUID", "unknown"))
-                logger.warning(
-                    f"Searchable attribute warnings for {sop_uid_temp}: {validation_warnings}"
-                )
-
-            sop_uid = str(ds.SOPInstanceUID)
-            study_uid = str(ds.StudyInstanceUID)
-            series_uid = str(ds.SeriesInstanceUID)
-
-            # If study UID provided in URL, validate match
-            if study_instance_uid and study_uid != study_instance_uid:
-                failures.append(
-                    {
-                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                        "00081155": {"vr": "UI", "Value": [sop_uid]},
-                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
-                    }
-                )
-                continue
-
-            if effective_study_uid is None:
-                effective_study_uid = study_uid
-
-            # Check for duplicate (POST should reject, PUT should upsert)
-            existing_check = await db.execute(
-                select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
-            )
-            existing_instance = existing_check.scalar_one_or_none()
-
-            if existing_instance:
-                # Duplicate detected - add to failed sequence
-                failures.append(
-                    {
-                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                        "00081155": {"vr": "UI", "Value": [sop_uid]},
-                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_INSTANCE_ALREADY_EXISTS]},
-                    }
-                )
-                continue  # Skip storing this duplicate
-
-            # Store file to disk
-            file_path = await store_instance(part.data, ds)
-            file_size = len(part.data)
-
-            # Extract metadata
-            dicom_json = dataset_to_dicom_json(ds)
-            searchable = extract_searchable_metadata(ds)
-
-            # Create new instance (POST never updates, only creates)
-            instance = DicomInstance(
-                study_instance_uid=study_uid,
-                series_instance_uid=series_uid,
-                sop_instance_uid=sop_uid,
-                sop_class_uid=str(getattr(ds, "SOPClassUID", "")),
-                transfer_syntax_uid=str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
-                if hasattr(ds, "file_meta")
-                else None,
-                dicom_json=dicom_json,
-                file_path=file_path,
-                file_size=file_size,
-                **searchable,
-            )
-            db.add(instance)
-            stored_instance = instance
-
-            # Add change feed entry
-            feed_entry = ChangeFeedEntry(
-                study_instance_uid=study_uid,
-                series_instance_uid=series_uid,
-                sop_instance_uid=sop_uid,
-                action="create",
-                state="current",
-            )
-            db.add(feed_entry)
-
-            stored.append(
-                {
-                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                    "00081155": {"vr": "UI", "Value": [sop_uid]},
-                    "00081190": {
-                        "vr": "UR",
-                        "Value": [
-                            f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
-                        ],
-                    },
-                }
-            )
-
-            # Track instance and feed_entry for event publishing
-            if stored_instance:
-                instances_to_publish.append((stored_instance, feed_entry))
-
-        except Exception as e:
-            failures.append(
-                {
-                    "00081197": {"vr": "US", "Value": [0xC000]},
-                    "00081196": {"vr": "LO", "Value": [str(e)]},
-                }
-            )
-            has_warnings = True
+    result = await _process_stow_instances(
+        parts, db, study_instance_uid=study_instance_uid, upsert=False
+    )
 
     await db.commit()
 
-    # Publish DicomImageCreated events (best-effort, after commit)
-    for instance, feed_entry in instances_to_publish:
-        try:
-            from main import get_event_manager
+    await _publish_stow_events(result.instances_to_publish, request)
 
-            event_manager = get_event_manager()
-            event = DicomEvent.from_instance_created(
-                study_uid=instance.study_instance_uid,
-                series_uid=instance.series_instance_uid,
-                instance_uid=instance.sop_instance_uid,
-                sequence_number=feed_entry.sequence,  # Use ChangeFeedEntry sequence (int)
-                service_url=str(request.base_url).rstrip("/"),
-            )
-            await event_manager.publish(event)
-        except Exception as e:
-            # Log but don't fail the DICOM operation
-            logger.error(f"Failed to publish event for instance {instance.sop_instance_uid}: {e}")
-
-    if not effective_study_uid:
-        effective_study_uid = "unknown"
-
-    response_body = build_store_response(effective_study_uid, stored, warnings, failures)
+    effective_study_uid = result.effective_study_uid or "unknown"
+    response_body = build_store_response(
+        effective_study_uid, result.stored, result.warnings, result.failures
+    )
 
     # Azure v2: 200 if all succeed, 202 if warnings or partial success, 409 if all fail
-    if failures and not stored:
+    if result.failures and not result.stored:
         # All instances failed (duplicates, validation errors, exceptions)
         status_code = 409
-    elif has_warnings or warnings or failures:
+    elif result.has_warnings or result.warnings or result.failures:
         # Return 202 for warnings OR partial success (some stored, some failed)
         status_code = 202
     else:
@@ -447,164 +533,37 @@ async def stow_rs_put(
         expiry_seconds = int(expiry_ms) / 1000
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)
 
-    # Parse multipart DICOM data (reuse POST logic)
     body = await request.body()
     parts = parse_multipart_related(body, content_type)
 
-    stored = []
-    failures = []
-    effective_study_uid = study_instance_uid
-    has_warnings = False
-    # Track instances for event publishing (after commit)
-    instances_to_publish = []
+    result = await _process_stow_instances(
+        parts, db, study_instance_uid=study_instance_uid, upsert=True
+    )
 
-    for part in parts:
-        try:
-            ds = parse_dicom(part.data)
-
-            # Validate required attributes
-            errors = validate_required_attributes(ds)
-            if errors:
-                failures.append(
-                    {
-                        "00081150": {"vr": "UI", "Value": [str(getattr(ds, "SOPClassUID", ""))]},
-                        "00081155": {"vr": "UI", "Value": [str(getattr(ds, "SOPInstanceUID", ""))]},
-                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
-                    }
-                )
-                continue
-
-            # Note: PUT does not validate searchable attributes (Azure v2 behavior)
-            # Searchable attribute validation only applies to POST
-
-            sop_uid = str(ds.SOPInstanceUID)
-            study_uid = str(ds.StudyInstanceUID)
-            series_uid = str(ds.SeriesInstanceUID)
-
-            # If study UID provided in URL, validate match
-            if study_instance_uid and study_uid != study_instance_uid:
-                failures.append(
-                    {
-                        "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                        "00081155": {"vr": "UI", "Value": [sop_uid]},
-                        "00081197": {"vr": "US", "Value": [FAILURE_REASON_UID_MISMATCH]},
-                    }
-                )
-                continue
-
-            if effective_study_uid is None:
-                effective_study_uid = study_uid
-
-            # Extract metadata for upsert service
-            dicom_json = dataset_to_dicom_json(ds)
-            searchable = extract_searchable_metadata(ds)
-
-            # Prepare data package for upsert service
-            dcm_data = {
-                "file_data": part.data,
-                "dicom_json": dicom_json,
-                "metadata": {
-                    "sop_class_uid": str(getattr(ds, "SOPClassUID", "")),
-                    "transfer_syntax_uid": str(getattr(ds.file_meta, "TransferSyntaxUID", ""))
-                    if hasattr(ds, "file_meta")
-                    else None,
-                    **searchable,
-                },
-            }
-
-            # Use upsert service for create-or-replace
-            action = await upsert_instance(
-                db, study_uid, series_uid, sop_uid, dcm_data, str(DICOM_STORAGE_DIR)
-            )
-
-            # Add change feed entry
-            feed_entry = ChangeFeedEntry(
-                study_instance_uid=study_uid,
-                series_instance_uid=series_uid,
-                sop_instance_uid=sop_uid,
-                action=action,  # "created" or "replaced"
-                state="current",
-            )
-            db.add(feed_entry)
-
-            # If previous change feed entry for this SOP exists, mark as replaced
-            if action == "replaced":
-                await _mark_previous_feed_entries(db, sop_uid)
-
-            stored.append(
-                {
-                    "00081150": {"vr": "UI", "Value": [str(ds.SOPClassUID)]},
-                    "00081155": {"vr": "UI", "Value": [sop_uid]},
-                    "00081190": {
-                        "vr": "UR",
-                        "Value": [
-                            f"/v2/studies/{study_uid}/series/{series_uid}/instances/{sop_uid}"
-                        ],
-                    },
-                }
-            )
-
-            # Get instance and track with feed_entry for event publishing
-            result = await db.execute(
-                select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
-            )
-            stored_instance = result.scalar_one_or_none()
-            if stored_instance:
-                instances_to_publish.append((stored_instance, feed_entry))
-
-        except Exception as e:
-            failures.append(
-                {
-                    "00081197": {"vr": "US", "Value": [0xC000]},
-                    "00081196": {"vr": "LO", "Value": [str(e)]},
-                }
-            )
-            has_warnings = True
-
-    # Create/update DicomStudy with expiry
-    if effective_study_uid and expires_at:
-        result = await db.execute(
-            select(DicomStudy).where(DicomStudy.study_instance_uid == effective_study_uid)
+    # Create/update DicomStudy with expiry (PUT-only feature)
+    if result.effective_study_uid and expires_at:
+        study_result = await db.execute(
+            select(DicomStudy).where(DicomStudy.study_instance_uid == result.effective_study_uid)
         )
-        study = result.scalar_one_or_none()
-
+        study = study_result.scalar_one_or_none()
         if not study:
-            study = DicomStudy(study_instance_uid=effective_study_uid)
+            study = DicomStudy(study_instance_uid=result.effective_study_uid)
             db.add(study)
-
-        # Set expiry
         study.expires_at = expires_at
 
     await db.commit()
 
-    # Publish DicomImageCreated events (best-effort, after commit)
-    for instance, feed_entry in instances_to_publish:
-        try:
-            from main import get_event_manager
+    await _publish_stow_events(result.instances_to_publish, request)
 
-            event_manager = get_event_manager()
-            event = DicomEvent.from_instance_created(
-                study_uid=instance.study_instance_uid,
-                series_uid=instance.series_instance_uid,
-                instance_uid=instance.sop_instance_uid,
-                sequence_number=feed_entry.sequence,  # Use ChangeFeedEntry sequence (int)
-                service_url=str(request.base_url).rstrip("/"),
-            )
-            await event_manager.publish(event)
-        except Exception as e:
-            # Log but don't fail the DICOM operation
-            logger.error(f"Failed to publish event for instance {instance.sop_instance_uid}: {e}")
+    effective_study_uid = result.effective_study_uid or "unknown"
 
-    if not effective_study_uid:
-        effective_study_uid = "unknown"
-
-    # Build response (no warnings for upsert - Azure v2 behavior)
-    response_body = build_store_response(effective_study_uid, stored, [], failures)
+    # Build response (no warnings for upsert — Azure v2 behavior)
+    response_body = build_store_response(effective_study_uid, result.stored, [], result.failures)
 
     # Azure v2: 200 if all succeed, 202 if warnings, 409 if all fail
-    if failures and not stored:
+    if result.failures and not result.stored:
         status_code = 409
-    elif has_warnings:
+    elif result.has_warnings:
         status_code = 202
     else:
         status_code = 200
