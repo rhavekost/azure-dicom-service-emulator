@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
+from app.config import EXPIRY_INTERVAL_SECONDS
 from app.database import AsyncSessionLocal, Base, engine
 from app.dependencies import set_event_manager
 from app.routers import changefeed, debug, extended_query_tags, operations, qido, stow, ups, wado
@@ -33,7 +34,7 @@ async def expiry_cleanup_task():
     """Background task that runs every hour to delete expired studies."""
     while True:
         try:
-            await asyncio.sleep(3600)  # 1 hour
+            await asyncio.sleep(EXPIRY_INTERVAL_SECONDS)
             async with AsyncSessionLocal() as db:
                 deleted_count = await delete_expired_studies(db, DICOM_STORAGE_DIR)
                 if deleted_count > 0:

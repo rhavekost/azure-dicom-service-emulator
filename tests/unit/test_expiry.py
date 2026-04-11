@@ -68,8 +68,10 @@ async def test_expiry_cleanup_task_calls_delete_expired_studies():
         with pytest.raises(asyncio.CancelledError):
             await expiry_cleanup_task()
 
-    # sleep should have been called at least once with 3600 seconds
-    mock_sleep.assert_called_with(3600)
+    # sleep should have been called at least once with the configured interval
+    from app.config import EXPIRY_INTERVAL_SECONDS
+
+    mock_sleep.assert_called_with(EXPIRY_INTERVAL_SECONDS)
     assert call_count >= 1
 
 
@@ -229,9 +231,11 @@ async def test_expiry_cleanup_task_sleep_precedes_work():
 
 
 @pytest.mark.asyncio
-async def test_expiry_cleanup_task_sleep_interval_is_one_hour():
-    """The cleanup interval must be exactly 3600 seconds (1 hour)."""
+async def test_expiry_cleanup_task_sleep_interval_uses_config():
+    """The cleanup interval must match EXPIRY_INTERVAL_SECONDS from config (default 3600)."""
     expiry_cleanup_task = _import_task()
+
+    from app.config import EXPIRY_INTERVAL_SECONDS
 
     sleep_args: list[int] = []
 
@@ -252,7 +256,7 @@ async def test_expiry_cleanup_task_sleep_interval_is_one_hour():
         with pytest.raises(asyncio.CancelledError):
             await expiry_cleanup_task()
 
-    assert sleep_args == [3600]
+    assert sleep_args == [EXPIRY_INTERVAL_SECONDS]
 
 
 @pytest.mark.asyncio

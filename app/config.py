@@ -16,6 +16,9 @@ DATABASE_URL: str = os.getenv(
     "postgresql+asyncpg://emulator:emulator@postgres:5432/dicom_emulator",
 )
 
+# How often (in seconds) the background expiry cleanup task runs.
+EXPIRY_INTERVAL_SECONDS: int = int(os.getenv("EXPIRY_INTERVAL_SECONDS", "3600"))
+
 # EVENT_PROVIDERS — JSON-encoded event provider configuration (optional).
 # This is intentionally read fresh on each call inside
 # app/services/events/config.load_providers_from_config() so that tests can
