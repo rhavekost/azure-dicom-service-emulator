@@ -20,6 +20,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
+from app.dependencies import get_event_manager
 from app.models.dicom import ChangeFeedEntry
 from app.models.events import DicomEvent
 from app.services.frame_cache import FrameCache
@@ -92,8 +93,6 @@ async def _publish_change_event(event: DicomEvent, instance_uid: str) -> None:
         instance_uid: SOP Instance UID used only for the error log message.
     """
     try:
-        from main import get_event_manager
-
         event_manager = get_event_manager()
         await event_manager.publish(event)
     except Exception as e:

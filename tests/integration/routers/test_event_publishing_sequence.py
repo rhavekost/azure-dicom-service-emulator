@@ -104,10 +104,10 @@ async def test_stow_publishes_event_with_integer_sequence(
     monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
 
     # Set up event manager
-    import main
+    import app.dependencies as deps
 
     event_manager = EventManager([in_memory_event_provider])
-    monkeypatch.setattr(main, "event_manager", event_manager)
+    monkeypatch.setattr(deps, "_event_manager", event_manager)
 
     # Create FastAPI app with test dependencies
     from contextlib import asynccontextmanager
@@ -179,10 +179,10 @@ async def test_put_stow_publishes_event_with_integer_sequence(
     monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
 
     # Set up event manager
-    import main
+    import app.dependencies as deps
 
     event_manager = EventManager([in_memory_event_provider])
-    monkeypatch.setattr(main, "event_manager", event_manager)
+    monkeypatch.setattr(deps, "_event_manager", event_manager)
 
     # Create FastAPI app with test dependencies
     from contextlib import asynccontextmanager
@@ -247,10 +247,10 @@ async def test_delete_publishes_event_with_integer_sequence(
     monkeypatch.setattr(dicom_engine, "STORAGE_DIR", str(storage_dir))
 
     # Set up event manager
-    import main
+    import app.dependencies as deps
 
     event_manager = EventManager([in_memory_event_provider])
-    monkeypatch.setattr(main, "event_manager", event_manager)
+    monkeypatch.setattr(deps, "_event_manager", event_manager)
 
     # Create FastAPI app with test dependencies
     from contextlib import asynccontextmanager

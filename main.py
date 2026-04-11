@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
 from app.database import AsyncSessionLocal, Base, engine
+from app.dependencies import set_event_manager
 from app.routers import changefeed, debug, extended_query_tags, operations, qido, stow, ups, wado
 from app.routers import delete as delete_router
 from app.services.events import EventManager, load_providers_from_config
@@ -25,18 +26,6 @@ from app.services.expiry import delete_expired_studies
 
 logger = logging.getLogger(__name__)
 DICOM_STORAGE_DIR = Path(_DICOM_STORAGE_DIR_STR)
-
-
-# Global event manager instance
-event_manager: EventManager | None = None
-
-
-def get_event_manager() -> EventManager:
-    """Get the global event manager instance."""
-    global event_manager
-    if event_manager is None:
-        raise RuntimeError("Event manager not initialized")
-    return event_manager
 
 
 async def expiry_cleanup_task():
@@ -55,15 +44,14 @@ async def expiry_cleanup_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create database tables and initialize event manager on startup."""
-    global event_manager
-
     # Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Initialize event providers
+    # Initialize event providers and register with dependency injection
     providers = load_providers_from_config()
     event_manager = EventManager(providers)
+    set_event_manager(event_manager)
 
     # Start background expiry cleanup task
     expiry_task = asyncio.create_task(expiry_cleanup_task())
@@ -77,8 +65,7 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
-    if event_manager:
-        await event_manager.close()
+    await event_manager.close()
 
 
 app = FastAPI(

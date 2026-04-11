@@ -29,10 +29,9 @@ def client_with_event_manager(client, monkeypatch):
     in_memory_provider = InMemoryEventProvider()
     event_manager = EventManager(providers=[in_memory_provider])
 
-    import main
+    import app.dependencies as deps
 
-    monkeypatch.setattr(main, "event_manager", event_manager)
-    monkeypatch.setattr(main, "get_event_manager", lambda: event_manager)
+    monkeypatch.setattr(deps, "_event_manager", event_manager)
 
     return client, in_memory_provider
 
@@ -91,12 +90,9 @@ def test_delete_debug_events_clears_provider(client_with_event_manager):
 
 def test_get_debug_events_no_event_manager_raises_404(client, monkeypatch):
     """GET /debug/events returns 404 when event manager raises RuntimeError."""
-    import main
+    import app.dependencies as deps
 
-    def raise_runtime():
-        raise RuntimeError("Event manager not initialized")
-
-    monkeypatch.setattr(main, "get_event_manager", raise_runtime)
+    monkeypatch.setattr(deps, "_event_manager", None)
 
     response = client.get("/debug/events")
     assert response.status_code == 404
@@ -104,12 +100,9 @@ def test_get_debug_events_no_event_manager_raises_404(client, monkeypatch):
 
 def test_delete_debug_events_no_event_manager_raises_404(client, monkeypatch):
     """DELETE /debug/events returns 404 when event manager raises RuntimeError."""
-    import main
+    import app.dependencies as deps
 
-    def raise_runtime():
-        raise RuntimeError("Event manager not initialized")
-
-    monkeypatch.setattr(main, "get_event_manager", raise_runtime)
+    monkeypatch.setattr(deps, "_event_manager", None)
 
     response = client.delete("/debug/events")
     assert response.status_code == 404
@@ -117,15 +110,12 @@ def test_delete_debug_events_no_event_manager_raises_404(client, monkeypatch):
 
 def test_get_debug_events_provider_not_in_memory_returns_404(client, monkeypatch):
     """GET /debug/events returns 404 when provider is not InMemoryEventProvider."""
+    import app.dependencies as deps
     from app.services.events.providers import FileEventProvider
 
     file_provider = FileEventProvider("/tmp/test_events.jsonl")
     event_manager = EventManager(providers=[file_provider])
-
-    import main
-
-    monkeypatch.setattr(main, "event_manager", event_manager)
-    monkeypatch.setattr(main, "get_event_manager", lambda: event_manager)
+    monkeypatch.setattr(deps, "_event_manager", event_manager)
 
     response = client.get("/debug/events")
     assert response.status_code == 404
@@ -133,15 +123,12 @@ def test_get_debug_events_provider_not_in_memory_returns_404(client, monkeypatch
 
 def test_delete_debug_events_provider_not_in_memory_returns_404(client, monkeypatch):
     """DELETE /debug/events returns 404 when provider is not InMemoryEventProvider."""
+    import app.dependencies as deps
     from app.services.events.providers import FileEventProvider
 
     file_provider = FileEventProvider("/tmp/test_events.jsonl")
     event_manager = EventManager(providers=[file_provider])
-
-    import main
-
-    monkeypatch.setattr(main, "event_manager", event_manager)
-    monkeypatch.setattr(main, "get_event_manager", lambda: event_manager)
+    monkeypatch.setattr(deps, "_event_manager", event_manager)
 
     response = client.delete("/debug/events")
     assert response.status_code == 404

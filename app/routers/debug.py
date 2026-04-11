@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
+from app.dependencies import get_event_manager
 from app.services.events.providers import InMemoryEventProvider
 
 router = APIRouter()
@@ -14,8 +15,6 @@ async def get_debug_events():
 
     Useful for testing and debugging event publishing.
     """
-    from main import get_event_manager
-
     try:
         event_manager = get_event_manager()
     except RuntimeError:
@@ -39,8 +38,6 @@ async def get_debug_events():
 @router.delete("/debug/events")
 async def clear_debug_events():
     """Clear all events from InMemoryEventProvider."""
-    from main import get_event_manager
-
     try:
         event_manager = get_event_manager()
     except RuntimeError:
