@@ -237,6 +237,7 @@ async def bulk_update_studies(
         await db.rollback()
         operation.status = "failed"
         try:
+            db.add(operation)  # re-attach after rollback cleared pending objects
             await db.commit()  # best-effort to save the failed status
         except Exception:
             pass

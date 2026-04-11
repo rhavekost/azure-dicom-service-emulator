@@ -29,6 +29,7 @@ STUDY_UID_12 = "2.25.100000000000000000000000000000000012"
 STUDY_UID_13 = "2.25.100000000000000000000000000000000013"
 STUDY_UID_14 = "2.25.100000000000000000000000000000000014"
 STUDY_UID_15 = "2.25.100000000000000000000000000000000015"
+STUDY_UID_16 = "1.2.3.4.5.6.7.8.9.16"
 NONEXISTENT_UID = "9.9.9.99999999"
 
 
@@ -467,12 +468,12 @@ def test_bulk_update_studies_updated_excludes_nonexistent_uids(client: TestClien
     )
     store_instance(
         client,
-        DicomFactory.create_ct_image(study_uid=STUDY_UID_6, patient_id="PAT_SKIP_B"),
+        DicomFactory.create_ct_image(study_uid=STUDY_UID_16, patient_id="PAT_SKIP_B"),
     )
 
     response = bulk_update(
         client,
-        study_uids=[STUDY_UID_15, STUDY_UID_6, NONEXISTENT_UID],
+        study_uids=[STUDY_UID_15, STUDY_UID_16, NONEXISTENT_UID],
         change_dataset={"00100020": {"vr": "LO", "Value": ["SKIP_UPDATED"]}},
     )
 
