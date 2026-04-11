@@ -101,4 +101,5 @@ markers = [
     "e2e: End-to-end workflow tests",
     "slow: Tests that take longer than 1 second",
     "security: Security and penetration tests",
+    "performance: Performance baseline tests that require a live service",
 ]
