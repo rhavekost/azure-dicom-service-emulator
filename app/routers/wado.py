@@ -41,13 +41,61 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# ── Shared OpenAPI response documentation for WADO-RS retrieve endpoints ──
+_WADO_RETRIEVE_RESPONSES = {
+    200: {
+        "description": "Multipart DICOM data for matching instances",
+        "content": {
+            'multipart/related; type="application/dicom"': {
+                "schema": {"type": "string", "format": "binary"}
+            }
+        },
+    }
+}
+
+_WADO_METADATA_RESPONSES = {
+    200: {
+        "description": "Array of DICOM JSON metadata objects",
+        "content": {
+            "application/dicom+json": {"schema": {"type": "array", "items": {"type": "object"}}}
+        },
+    },
+    304: {"description": "Not Modified (ETag matched)"},
+}
+
+_WADO_FRAMES_RESPONSES = {
+    200: {
+        "description": "Raw frame data or multipart frame data",
+        "content": {
+            "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
+            'multipart/related; type="application/octet-stream"': {
+                "schema": {"type": "string", "format": "binary"}
+            },
+        },
+    }
+}
+
+_WADO_RENDERED_RESPONSES = {
+    200: {
+        "description": "Rendered image (JPEG or PNG)",
+        "content": {
+            "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+            "image/png": {"schema": {"type": "string", "format": "binary"}},
+        },
+    }
+}
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  WADO-RS — Retrieve Instances & Metadata
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-@router.get("/studies/{study_uid}")
+@router.get(
+    "/studies/{study_uid}",
+    response_class=Response,
+    responses={**_WADO_RETRIEVE_RESPONSES, **_WADO_METADATA_RESPONSES},
+)
 async def wado_rs_study(
     study_uid: str,
     request: Request,
@@ -68,7 +116,11 @@ async def wado_rs_study(
     return await _retrieve_instances(db, study_uid=study_uid)
 
 
-@router.get("/studies/{study_uid}/metadata")
+@router.get(
+    "/studies/{study_uid}/metadata",
+    response_class=Response,
+    responses=_WADO_METADATA_RESPONSES,
+)
 async def wado_rs_study_metadata(
     study_uid: str,
     db: AsyncSession = Depends(get_db),
@@ -78,7 +130,11 @@ async def wado_rs_study_metadata(
     return await _retrieve_metadata(db, study_uid=study_uid, if_none_match=if_none_match)
 
 
-@router.get("/studies/{study_uid}/series/{series_uid}")
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}",
+    response_class=Response,
+    responses={**_WADO_RETRIEVE_RESPONSES, **_WADO_METADATA_RESPONSES},
+)
 async def wado_rs_series(
     study_uid: str,
     series_uid: str,
@@ -99,7 +155,11 @@ async def wado_rs_series(
     return await _retrieve_instances(db, study_uid=study_uid, series_uid=series_uid)
 
 
-@router.get("/studies/{study_uid}/series/{series_uid}/metadata")
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/metadata",
+    response_class=Response,
+    responses=_WADO_METADATA_RESPONSES,
+)
 async def wado_rs_series_metadata(
     study_uid: str,
     series_uid: str,
@@ -112,7 +172,11 @@ async def wado_rs_series_metadata(
     )
 
 
-@router.get("/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}")
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}",
+    response_class=Response,
+    responses={**_WADO_RETRIEVE_RESPONSES, **_WADO_METADATA_RESPONSES},
+)
 async def wado_rs_instance(
     study_uid: str,
     series_uid: str,
@@ -138,7 +202,11 @@ async def wado_rs_instance(
     )
 
 
-@router.get("/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/metadata")
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/metadata",
+    response_class=Response,
+    responses=_WADO_METADATA_RESPONSES,
+)
 async def wado_rs_instance_metadata(
     study_uid: str,
     series_uid: str,
@@ -156,7 +224,11 @@ async def wado_rs_instance_metadata(
     )
 
 
-@router.get("/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frames}")
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frames}",
+    response_class=Response,
+    responses=_WADO_FRAMES_RESPONSES,
+)
 async def retrieve_frames(
     study_uid: str,
     series_uid: str,
@@ -247,6 +319,7 @@ async def retrieve_frames(
     "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/rendered",
     response_class=Response,
     summary="Retrieve rendered DICOM instance (WADO-RS)",
+    responses=_WADO_RENDERED_RESPONSES,
 )
 async def retrieve_rendered_instance(
     study_uid: str,
@@ -318,6 +391,7 @@ async def retrieve_rendered_instance(
     "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame}/rendered",
     response_class=Response,
     summary="Retrieve rendered DICOM frame (WADO-RS)",
+    responses=_WADO_RENDERED_RESPONSES,
 )
 async def retrieve_rendered_frame(
     study_uid: str,

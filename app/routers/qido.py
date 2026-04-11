@@ -19,11 +19,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.dicom import DicomInstance
 from app.routers._shared import _json_dumps
+from app.schemas.qido import (
+    DicomJsonObject,  # noqa: F401 — imported for OpenAPI schema registration
+)
 from app.services.search_utils import build_fuzzy_name_filter, parse_uid_list, translate_wildcards
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── Shared OpenAPI response documentation for QIDO-RS endpoints ────
+_QIDO_RESPONSES = {
+    200: {
+        "description": "Array of DICOM JSON objects matching the query",
+        "content": {
+            "application/dicom+json": {
+                "schema": {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/DicomJsonObject"},
+                }
+            }
+        },
+    }
+}
 
 # ── Tag mapping for QIDO-RS query parameters ───────────────────────
 QIDO_TAG_MAP = {
@@ -238,7 +256,7 @@ def filter_dicom_json_by_includefield(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-@router.get("/studies")
+@router.get("/studies", response_class=Response, responses=_QIDO_RESPONSES)
 async def qido_rs_studies(
     request: Request,
     limit: int = Query(100, alias="limit"),
@@ -321,7 +339,7 @@ async def qido_rs_studies(
     )
 
 
-@router.get("/studies/{study_uid}/series")
+@router.get("/studies/{study_uid}/series", response_class=Response, responses=_QIDO_RESPONSES)
 async def qido_rs_series(
     study_uid: str,
     request: Request,
@@ -395,7 +413,11 @@ async def qido_rs_series(
     )
 
 
-@router.get("/studies/{study_uid}/series/{series_uid}/instances")
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances",
+    response_class=Response,
+    responses=_QIDO_RESPONSES,
+)
 async def qido_rs_instances(
     study_uid: str,
     series_uid: str,
@@ -447,7 +469,7 @@ async def qido_rs_instances(
     )
 
 
-@router.get("/series")
+@router.get("/series", response_class=Response, responses=_QIDO_RESPONSES)
 async def qido_rs_all_series(
     request: Request,
     limit: int = Query(100, alias="limit"),
@@ -550,7 +572,7 @@ async def qido_rs_all_series(
     )
 
 
-@router.get("/instances")
+@router.get("/instances", response_class=Response, responses=_QIDO_RESPONSES)
 async def qido_rs_all_instances(
     request: Request,
     limit: int = Query(100, alias="limit"),
@@ -591,7 +613,7 @@ async def qido_rs_all_instances(
     )
 
 
-@router.get("/studies/{study_uid}/instances")
+@router.get("/studies/{study_uid}/instances", response_class=Response, responses=_QIDO_RESPONSES)
 async def qido_rs_study_instances(
     study_uid: str,
     request: Request,

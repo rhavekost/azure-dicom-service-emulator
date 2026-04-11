@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.dicom import Operation
+from app.schemas.operations import OperationResponse
 
 router = APIRouter()
 
 
-@router.get("/operations/{operation_id}")
+@router.get("/operations/{operation_id}", response_model=OperationResponse)
 async def get_operation_status(
     operation_id: str,
     db: AsyncSession = Depends(get_db),

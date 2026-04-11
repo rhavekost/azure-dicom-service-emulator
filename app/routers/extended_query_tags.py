@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.dicom import ExtendedQueryTag, Operation
+from app.schemas.extended_query_tags import (
+    AddExtendedQueryTagsOperationResponse,
+    ExtendedQueryTagResponse,
+)
 
 router = APIRouter()
 
@@ -28,7 +32,7 @@ class ExtendedQueryTagsRequest(BaseModel):
     tags: list[ExtendedQueryTagInput]
 
 
-@router.get("/extendedquerytags")
+@router.get("/extendedquerytags", response_model=list[ExtendedQueryTagResponse])
 async def list_extended_query_tags(
     db: AsyncSession = Depends(get_db),
 ):
@@ -51,7 +55,11 @@ async def list_extended_query_tags(
     ]
 
 
-@router.post("/extendedquerytags", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/extendedquerytags",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=AddExtendedQueryTagsOperationResponse,
+)
 async def add_extended_query_tags(
     request: ExtendedQueryTagsRequest,
     db: AsyncSession = Depends(get_db),
@@ -100,7 +108,7 @@ async def add_extended_query_tags(
     }
 
 
-@router.get("/extendedquerytags/{path}")
+@router.get("/extendedquerytags/{path}", response_model=ExtendedQueryTagResponse)
 async def get_extended_query_tag(
     path: str,
     db: AsyncSession = Depends(get_db),

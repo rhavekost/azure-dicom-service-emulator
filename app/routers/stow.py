@@ -29,6 +29,7 @@ from app.routers._shared import (
     _mark_previous_feed_entries,
     _publish_change_event,
 )
+from app.schemas.stow import StowResponse  # noqa: F401 — imported for OpenAPI schema registration
 from app.services.dicom_engine import (
     build_store_response,
     dataset_to_dicom_json,
@@ -104,7 +105,22 @@ def _extract_scalar_value(tag_entry: dict) -> str | None:
 
 # NOTE: This route must appear before POST /studies/{study_instance_uid} (STOW-RS)
 # so FastAPI matches the literal "$bulkUpdate" segment before treating it as a path param.
-@router.post("/studies/$bulkUpdate", status_code=202)
+@router.post(
+    "/studies/$bulkUpdate",
+    status_code=202,
+    response_class=Response,
+    responses={
+        202: {
+            "description": "Bulk update started. Location header points to the operation.",
+            "headers": {
+                "Location": {
+                    "description": "URL of the created operation",
+                    "schema": {"type": "string"},
+                }
+            },
+        }
+    },
+)
 async def bulk_update_studies(
     request: Request,
     body: BulkUpdateRequest,
@@ -452,8 +468,30 @@ async def _publish_stow_events(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-@router.post("/studies")
-@router.post("/studies/{study_instance_uid}")
+_STOW_RESPONSES = {
+    200: {
+        "description": "All instances stored successfully",
+        "content": {
+            "application/dicom+json": {"schema": {"$ref": "#/components/schemas/StowResponse"}}
+        },
+    },
+    202: {
+        "description": "Instances stored with warnings or partial failure",
+        "content": {
+            "application/dicom+json": {"schema": {"$ref": "#/components/schemas/StowResponse"}}
+        },
+    },
+    409: {
+        "description": "All instances failed to store",
+        "content": {
+            "application/dicom+json": {"schema": {"$ref": "#/components/schemas/StowResponse"}}
+        },
+    },
+}
+
+
+@router.post("/studies", response_class=Response, responses=_STOW_RESPONSES)
+@router.post("/studies/{study_instance_uid}", response_class=Response, responses=_STOW_RESPONSES)
 async def stow_rs(
     request: Request,
     study_instance_uid: Optional[str] = None,
@@ -501,8 +539,8 @@ async def stow_rs(
     )
 
 
-@router.put("/studies")
-@router.put("/studies/{study_instance_uid}")
+@router.put("/studies", response_class=Response, responses=_STOW_RESPONSES)
+@router.put("/studies/{study_instance_uid}", response_class=Response, responses=_STOW_RESPONSES)
 async def stow_rs_put(
     request: Request,
     study_instance_uid: Optional[str] = None,

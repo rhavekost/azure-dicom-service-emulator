@@ -9,11 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.dicom import ChangeFeedEntry
+from app.schemas.changefeed import ChangeFeedEntryResponse, ChangeFeedLatestResponse
 
 router = APIRouter()
 
 
-@router.get("/changefeed")
+@router.get("/changefeed", response_model=list[ChangeFeedEntryResponse])
 async def get_change_feed(
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -59,7 +60,11 @@ async def get_change_feed(
     ]
 
 
-@router.get("/changefeed/latest")
+@router.get(
+    "/changefeed/latest",
+    response_model=ChangeFeedLatestResponse,
+    response_model_exclude_none=True,
+)
 async def get_latest_change_feed(
     db: AsyncSession = Depends(get_db),
 ):
