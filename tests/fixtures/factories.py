@@ -3,12 +3,14 @@
 import uuid
 from datetime import datetime
 from io import BytesIO
+from typing import Any
 
 from pydicom.dataset import Dataset, FileDataset
 from pydicom.uid import UID, ExplicitVRLittleEndian, generate_uid
 
-# Sentinel value for optional parameters — typed to satisfy mypy default checks
-_UNSET: str | None = None  # treated as a distinct sentinel via `is _UNSET` checks
+# Sentinel value for optional parameters — identity checked via `is _UNSET`
+# Using Any type so mypy accepts it as a default for str|None parameters
+_UNSET: Any = object()
 
 
 class DicomFactory:

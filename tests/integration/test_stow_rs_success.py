@@ -222,10 +222,13 @@ def test_store_multiple_instances_in_batch(client: TestClient):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def test_post_duplicate_returns_409(client: TestClient):
-    """POST same instance twice returns 409 Conflict per Azure v2 spec.
+def test_post_duplicate_returns_202(client: TestClient):
+    """POST same instance twice returns 202 with warning code 45070.
 
-    POST endpoints reject duplicates, unlike PUT which allows upserts.
+    DICOM code 45070 (0xB00E) is a warning, not a hard failure. Azure v2
+    returns 202 with FailedSOPSequence containing the warning, not 409.
+    POST differs from PUT in that PUT silently upserts (200), while POST
+    signals the duplicate via 202 warning.
     """
     # Create DICOM with specific UIDs
     dcm_bytes = DicomFactory.create_ct_image(
@@ -246,21 +249,21 @@ def test_post_duplicate_returns_409(client: TestClient):
     )
     assert response1.status_code == 200
 
-    # Second POST - should return 409 per Azure v2 spec
+    # Second POST - should return 202 with warning 45070 (duplicate is a warning, not a hard failure)
     response2 = client.post(
         "/v2/studies",
         content=body,
         headers={"Content-Type": content_type},
     )
-    assert response2.status_code == 409
+    assert response2.status_code == 202
     assert "00081198" in response2.json()  # FailedSOPSequence present
 
 
 def test_post_duplicate_includes_warning_45070(client: TestClient):
-    """Verify duplicate POST handling returns 409 with failure code 45070.
+    """Verify duplicate POST handling returns 202 with warning code 45070.
 
-    Per Azure v2 spec and DICOMweb standard, POST should reject duplicates
-    with HTTP 409 Conflict and include failure code 45070 (Instance already exists).
+    DICOM code 45070 (0xB00E) is a warning-level status. Azure v2 returns
+    HTTP 202 with FailedSOPSequence containing the warning code, not 409 Conflict.
     """
     dcm_bytes = DicomFactory.create_ct_image(
         patient_id="WARN-TEST-001",
@@ -287,12 +290,12 @@ def test_post_duplicate_includes_warning_45070(client: TestClient):
         headers={"Content-Type": content_type},
     )
 
-    assert response2.status_code == 409
+    assert response2.status_code == 202
     response_json = response2.json()
-    # Verify FailedSOPSequence is present
+    # Verify FailedSOPSequence is present with warning code 45070
     assert "00081198" in response_json  # FailedSOPSequence
     failed = response_json["00081198"]["Value"][0]
-    assert failed["00081197"]["Value"][0] == 45070  # Instance already exists
+    assert failed["00081197"]["Value"][0] == 45070  # Instance already exists (warning)
     assert (
         failed["00081155"]["Value"][0]
         == "1.2.826.0.1.3680043.8.498.30450704507045070450704507045070450"
