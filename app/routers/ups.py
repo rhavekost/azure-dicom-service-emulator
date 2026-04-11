@@ -62,6 +62,7 @@ async def create_workitem(
 @router.post(
     "/workitems/{workitem_uid}",
     status_code=201,
+    responses={200: {"description": "Workitem updated successfully"}},
     summary="Create or update workitem with UID in path (UPS-RS)",
 )
 async def create_or_update_workitem(
@@ -89,7 +90,7 @@ async def create_or_update_workitem(
     # Query param takes precedence; fall back to header for consistency with PUT.
     txn_uid = transaction_uid or request.headers.get("Transaction-UID")
 
-    # Check if workitem exists to decide create vs. update
+    # Must SELECT first to determine create vs update; txn_uid validation happens after
     result = await db.execute(select(Workitem).where(Workitem.sop_instance_uid == workitem_uid))
     existing = result.scalar_one_or_none()
 

@@ -325,6 +325,59 @@ def test_post_update_workitem_in_progress_without_txn_uid_returns_409(client):
     assert response.status_code == 409
 
 
+def test_post_new_workitem_with_txn_uid_query_param_returns_400(client):
+    """POST /v2/workitems/{uid}?transaction-uid=xxx on a non-existent workitem returns 400."""
+    uid = generate_uid()
+    txn_uid = generate_uid()
+    payload = {
+        "00741000": {"vr": "CS", "Value": ["SCHEDULED"]},
+        "00100020": {"vr": "LO", "Value": ["PAT-NEW-001"]},
+    }
+    response = client.post(f"/v2/workitems/{uid}?transaction-uid={txn_uid}", json=payload)
+    assert response.status_code == 400
+
+
+def test_post_new_workitem_with_txn_uid_header_returns_400(client):
+    """POST /v2/workitems/{uid} with Transaction-UID header on a non-existent workitem returns 400."""
+    uid = generate_uid()
+    txn_uid = generate_uid()
+    payload = {
+        "00741000": {"vr": "CS", "Value": ["SCHEDULED"]},
+        "00100020": {"vr": "LO", "Value": ["PAT-NEW-001"]},
+    }
+    response = client.post(
+        f"/v2/workitems/{uid}",
+        json=payload,
+        headers={"Transaction-UID": txn_uid},
+    )
+    assert response.status_code == 400
+
+
+def test_post_update_workitem_in_progress_with_txn_uid_header(client):
+    """POST /v2/workitems/{uid} with Transaction-UID header updates IN PROGRESS workitem."""
+    uid, payload = make_workitem()
+    assert client.post("/v2/workitems", json=payload).status_code == 201
+
+    # Claim workitem (SCHEDULED → IN PROGRESS)
+    txn_uid = generate_uid()
+    claim_payload = {
+        "00741000": {"vr": "CS", "Value": ["IN PROGRESS"]},
+        "00081195": {"vr": "UI", "Value": [txn_uid]},
+    }
+    assert client.put(f"/v2/workitems/{uid}/state", json=claim_payload).status_code == 200
+
+    # Update via POST with Transaction-UID as header (not query param)
+    update_payload = {
+        "00100020": {"vr": "LO", "Value": ["POST-HEADER-TXN-PAT"]},
+    }
+    response = client.post(
+        f"/v2/workitems/{uid}",
+        json=update_payload,
+        headers={"Transaction-UID": txn_uid},
+    )
+    assert response.status_code == 200
+
+
 def test_put_update_workitem_still_works_backwards_compat(client):
     """PUT /v2/workitems/{uid} still works for backwards compatibility."""
     uid, payload = make_workitem()
