@@ -46,7 +46,7 @@ dev = [
     "safety>=3.0.0",
 
     # Test Execution
-    "pytest-xdist>=3.5.0",
+    "pytest-xdist>=3.8.0",
     "pytest-html>=4.1.0",
 
     # Test Data
