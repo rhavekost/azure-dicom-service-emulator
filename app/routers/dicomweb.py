@@ -1094,6 +1094,156 @@ async def qido_rs_instances(
     )
 
 
+@router.get("/series")
+async def qido_rs_all_series(
+    request: Request,
+    limit: int = Query(100, alias="limit"),
+    offset: int = Query(0, alias="offset"),
+    fuzzymatching: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    """QIDO-RS: Search for all series across all studies.
+
+    Root-level series search — equivalent to the Azure DICOM Service v2
+    ``GET /series`` endpoint. Supports the same QIDO-RS query parameters as
+    the study-scoped series search.
+
+    Query parameters:
+    - PatientID, PatientName, StudyDate, AccessionNumber, Modality,
+      StudyInstanceUID, SeriesInstanceUID, fuzzymatching, limit, offset,
+      includefield
+    """
+    filters = _parse_qido_params(request.query_params, fuzzymatching)
+
+    query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    instances = result.scalars().all()
+
+    # Group by series
+    series: dict[str, list] = {}
+    for inst in instances:
+        if inst.series_instance_uid not in series:
+            series[inst.series_instance_uid] = []
+        series[inst.series_instance_uid].append(inst)
+
+    includefield_list = request.query_params.getlist("includefield")
+    includefield = includefield_list if includefield_list else None
+
+    response = []
+    for series_uid, series_instances in series.items():
+        first = series_instances[0]
+        series_json = {
+            "0020000D": {"vr": "UI", "Value": [first.study_instance_uid]},
+            "0020000E": {"vr": "UI", "Value": [series_uid]},
+            "00080060": {"vr": "CS", "Value": [first.modality] if first.modality else {}},
+            "0008103E": {
+                "vr": "LO",
+                "Value": [first.series_description] if first.series_description else {},
+            },
+            "00200011": {"vr": "IS", "Value": [first.series_number] if first.series_number else {}},
+            "00201209": {
+                "vr": "IS",
+                "Value": [len(series_instances)],
+            },  # NumberOfSeriesRelatedInstances
+        }
+        filtered_series_json = filter_dicom_json_by_includefield(
+            series_json, includefield, "series"
+        )
+        response.append(filtered_series_json)
+
+    return Response(
+        content=_json_dumps(response),
+        media_type="application/dicom+json",
+    )
+
+
+@router.get("/instances")
+async def qido_rs_all_instances(
+    request: Request,
+    limit: int = Query(100, alias="limit"),
+    offset: int = Query(0, alias="offset"),
+    fuzzymatching: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    """QIDO-RS: Search for all instances across all studies and series.
+
+    Root-level instance search — equivalent to the Azure DICOM Service v2
+    ``GET /instances`` endpoint. Supports the same QIDO-RS query parameters as
+    the series-scoped instance search.
+
+    Query parameters:
+    - PatientID, PatientName, StudyDate, AccessionNumber, Modality,
+      StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID, fuzzymatching,
+      limit, offset, includefield
+    """
+    filters = _parse_qido_params(request.query_params, fuzzymatching)
+
+    query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    instances = result.scalars().all()
+
+    includefield_list = request.query_params.getlist("includefield")
+    includefield = includefield_list if includefield_list else None
+
+    response = [
+        filter_dicom_json_by_includefield(inst.dicom_json, includefield, "instance")
+        for inst in instances
+    ]
+
+    return Response(
+        content=_json_dumps(response),
+        media_type="application/dicom+json",
+    )
+
+
+@router.get("/studies/{study_uid}/instances")
+async def qido_rs_study_instances(
+    study_uid: str,
+    request: Request,
+    limit: int = Query(100, alias="limit"),
+    offset: int = Query(0, alias="offset"),
+    fuzzymatching: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    """QIDO-RS: Search for instances within a study across all series.
+
+    Study-scoped instance search (without series scope) — equivalent to the
+    Azure DICOM Service v2 ``GET /studies/{study}/instances`` endpoint.
+
+    Query parameters:
+    - SeriesInstanceUID, SOPInstanceUID, PatientID, PatientName, Modality,
+      fuzzymatching, limit, offset, includefield
+    """
+    # Always scope to the requested study
+    base_conditions = [DicomInstance.study_instance_uid == study_uid]
+
+    # Parse additional QIDO filters from query params
+    extra_filters = _parse_qido_params(request.query_params, fuzzymatching)
+
+    conditions = base_conditions + extra_filters
+    query = select(DicomInstance).where(and_(*conditions)).offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    instances = result.scalars().all()
+
+    includefield_list = request.query_params.getlist("includefield")
+    includefield = includefield_list if includefield_list else None
+
+    response = [
+        filter_dicom_json_by_includefield(inst.dicom_json, includefield, "instance")
+        for inst in instances
+    ]
+
+    return Response(
+        content=_json_dumps(response),
+        media_type="application/dicom+json",
+    )
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DELETE — Remove studies/series/instances
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
