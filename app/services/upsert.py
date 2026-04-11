@@ -72,8 +72,13 @@ async def upsert_instance(
     else:
         action = "created"
 
-    # Store new instance
-    await store_instance(db, study_uid, series_uid, sop_uid, dcm_data, storage_dir)
+    # Store new instance — if this fails, the delete above is not yet committed
+    try:
+        await store_instance(db, study_uid, series_uid, sop_uid, dcm_data, storage_dir)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
     return action
 
@@ -116,7 +121,6 @@ async def delete_instance(
     # Delete from database
     delete_stmt = sql_delete(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
     await db.execute(delete_stmt)
-    await db.commit()
 
 
 async def store_instance(
@@ -185,4 +189,3 @@ async def store_instance(
     )
 
     db.add(instance)
-    await db.commit()

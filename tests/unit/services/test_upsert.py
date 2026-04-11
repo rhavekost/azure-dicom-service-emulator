@@ -160,7 +160,7 @@ async def test_delete_instance(db_session, storage_dir, sample_dicom_data):
     series_uid = "1.2.3.4"
     sop_uid = "1.2.3.4.5"
 
-    # Create instance first
+    # Create instance first (upsert_instance commits internally)
     await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
@@ -173,8 +173,9 @@ async def test_delete_instance(db_session, storage_dir, sample_dicom_data):
 
     assert file_path.exists()
 
-    # Delete the instance
+    # Delete the instance and commit (delete_instance no longer auto-commits)
     await delete_instance(db_session, study_uid, series_uid, sop_uid, storage_dir)
+    await db_session.commit()
 
     # Verify instance was removed from database
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -194,7 +195,9 @@ async def test_store_instance(db_session, storage_dir, sample_dicom_data):
     series_uid = "1.2.3.4"
     sop_uid = "1.2.3.4.5"
 
+    # store_instance no longer auto-commits; caller must commit
     await store_instance(db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir)
+    await db_session.commit()
 
     # Verify instance was stored in database
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -209,3 +212,50 @@ async def test_store_instance(db_session, storage_dir, sample_dicom_data):
     file_path = Path(instance.file_path)
     assert file_path.exists()
     assert file_path.read_bytes() == sample_dicom_data["file_data"]
+
+
+@pytest.mark.asyncio
+async def test_upsert_atomicity_store_failure_leaves_no_orphan(
+    db_session, storage_dir, sample_dicom_data
+):
+    """
+    Atomicity test: if store_instance fails after delete_instance has run,
+    the database must NOT be left in a partial state (old instance gone, new one missing).
+
+    This verifies the fix for the mid-loop commit bug: the delete and store now
+    happen in a single transaction that rolls back entirely on failure.
+    """
+    study_uid = "1.2.3"
+    series_uid = "1.2.3.4"
+    sop_uid = "1.2.3.4.5"
+
+    # Create initial instance
+    await upsert_instance(
+        db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
+    )
+
+    # Confirm the instance exists
+    stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+    result = await db_session.execute(stmt)
+    assert result.scalar_one_or_none() is not None
+
+    # Prepare bad data that will cause store_instance to fail (missing required key)
+    bad_data = {
+        # "file_data" key is missing — aiofiles.open write will raise KeyError
+        "dicom_json": {},
+        "metadata": {},
+    }
+
+    # Attempt upsert with bad data — should raise and roll back
+    with pytest.raises(Exception):
+        await upsert_instance(db_session, study_uid, series_uid, sop_uid, bad_data, storage_dir)
+
+    # After rollback, the original instance must still exist — no orphan deletion
+    stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
+    result = await db_session.execute(stmt)
+    surviving = result.scalar_one_or_none()
+
+    assert surviving is not None, (
+        "Atomicity violated: the old instance was deleted but the new one was never stored. "
+        "The DB is in a partial/inconsistent state."
+    )
