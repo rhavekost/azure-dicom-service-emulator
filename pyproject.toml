@@ -55,6 +55,9 @@ dev = [
 
     # Test Database
     "aiosqlite>=0.20.0",
+
+    # Type stubs
+    "types-aiofiles>=23.0.0",
 ]
 
 [build-system]

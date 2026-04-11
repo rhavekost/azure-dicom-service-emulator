@@ -19,7 +19,12 @@ def test_store_single_instance_returns_200(client):
     assert response.status_code == 200
 
 
-def test_store_duplicate_returns_409(client):
+def test_store_duplicate_returns_202_with_warning(client):
+    """POST of a duplicate instance returns 202 (not 409).
+
+    DICOM warning code 45070 (0xB00E) is a warning-level status, so
+    Azure DICOM Service returns 202 with a WarningReason, not a 409 failure.
+    """
     sop_uid = generate_uid()
     dicom_bytes = DicomFactory.create_ct_image(sop_uid=sop_uid)
 
@@ -29,7 +34,12 @@ def test_store_duplicate_returns_409(client):
     response = client.post(
         "/v2/studies", content=make_multipart(dicom_bytes), headers={"Content-Type": CONTENT_TYPE}
     )
-    assert response.status_code == 409
+    assert response.status_code == 202
+    # FailedSOPSequence should contain the duplicate with reason 45070
+    body = response.json()
+    failed = body.get("00081198", {}).get("Value", [])
+    assert len(failed) == 1
+    assert failed[0]["00081197"]["Value"][0] == 45070
 
 
 def test_store_missing_required_uid_returns_409(client):
