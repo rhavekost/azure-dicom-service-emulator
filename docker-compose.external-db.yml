@@ -1,0 +1,40 @@
+# Azure DICOM Service Emulator — external database
+#
+# Use this when you already have a PostgreSQL instance running elsewhere
+# (local install, Azure Database for PostgreSQL, RDS, etc.)
+#
+# Usage:
+#   export DATABASE_URL="postgresql+asyncpg://user:pass@your-host:5432/dicom_db"
+#   docker compose -f docker-compose.external-db.yml up -d
+#
+# Or inline:
+#   DATABASE_URL="postgresql+asyncpg://..." docker compose -f docker-compose.external-db.yml up -d
+#
+# The emulator creates its own schema tables on first boot.
+# Requires PostgreSQL 14+ with the pg_trgm extension available.
+
+services:
+  emulator:
+    image: rhavekost/azure-dicom-service-emulator:latest
+    # build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Required: set this to your PostgreSQL connection string
+      DATABASE_URL: "${DATABASE_URL:?DATABASE_URL is required. Set it before running: export DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/dbname}"
+      DICOM_STORAGE_DIR: /data/dicom
+      EXPIRY_INTERVAL_SECONDS: 3600
+      # Optional: uncomment to enable Azure Storage Queue event publishing
+      # EVENT_PROVIDERS: '[{"type":"azure_storage_queue","connection_string":"...","queue_name":"dicom-events","enabled":true}]'
+    volumes:
+      - dicom-data:/data/dicom
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  dicom-data:

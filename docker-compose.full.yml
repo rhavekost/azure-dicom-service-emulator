@@ -1,0 +1,79 @@
+# Azure DICOM Service Emulator — full dev stack
+#
+# Adds Azurite (Azure Storage emulator) for testing event publishing via
+# Azure Storage Queue. Use this when you need change-feed events delivered
+# to a queue (e.g. testing downstream consumers).
+#
+# Usage:
+#   docker compose -f docker-compose.full.yml up -d
+#
+# Events land in the "dicom-events" queue in Azurite.
+# Inspect with Azure Storage Explorer → connect to http://localhost:10001
+
+services:
+  emulator:
+    image: rhavekost/azure-dicom-service-emulator:latest
+    # build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://emulator:emulator@postgres:5432/dicom_emulator
+      DICOM_STORAGE_DIR: /data/dicom
+      EXPIRY_INTERVAL_SECONDS: 3600
+      EVENT_PROVIDERS: |
+        [
+          {
+            "type": "azure_storage_queue",
+            "connection_string": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;QueueEndpoint=http://azurite:10001/devstoreaccount1;",
+            "queue_name": "dicom-events",
+            "enabled": true
+          }
+        ]
+    volumes:
+      - dicom-data:/data/dicom
+    depends_on:
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: emulator
+      POSTGRES_PASSWORD: emulator
+      POSTGRES_DB: dicom_emulator
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emulator -d dicom_emulator"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    restart: unless-stopped
+    ports:
+      - "10001:10001"  # Queue (the only service needed here)
+    command: ["azurite-queue", "--queueHost", "0.0.0.0", "--queuePort", "10001", "--loose"]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10001 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:
+  dicom-data:

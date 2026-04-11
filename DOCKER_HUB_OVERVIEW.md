@@ -8,19 +8,37 @@ A local drop-in replacement for [Azure Health Data Services DICOM Service](https
 
 ## Quick Start
 
-```bash
-# Download the compose file
-curl -O https://raw.githubusercontent.com/rhavekost/azure-dicom-service-emulator/main/docker-compose.yml
+### Option 1 — Bundled Postgres (simplest)
 
-# Start emulator + PostgreSQL + Azurite
+```bash
+curl -O https://raw.githubusercontent.com/rhavekost/azure-dicom-service-emulator/main/docker-compose.yml
 docker compose up -d
 
-# Verify
 curl http://localhost:8080/health
 # {"status":"healthy","service":"azure-healthcare-workspace-emulator"}
+```
 
-# Open interactive API docs
-open http://localhost:8080/docs
+Emulator + PostgreSQL. DICOM files on a named volume. No Azurite — event publishing is opt-in.
+
+### Option 2 — Just this container (bring your own Postgres)
+
+```bash
+docker run -d \
+  --name dicom-emulator \
+  -p 8080:8080 \
+  -e DATABASE_URL="postgresql+asyncpg://user:pass@your-host:5432/dicom_db" \
+  -v dicom-data:/data/dicom \
+  rhavekost/azure-dicom-service-emulator:latest
+```
+
+The emulator creates its own schema tables on first boot. Requires PostgreSQL 14+.
+
+### Option 3 — Full stack (with Azure Storage Queue events)
+
+```bash
+curl -O https://raw.githubusercontent.com/rhavekost/azure-dicom-service-emulator/main/docker-compose.full.yml
+docker compose -f docker-compose.full.yml up -d
+# Adds Azurite — change-feed events land in the "dicom-events" queue
 ```
 
 ---
@@ -69,16 +87,13 @@ open http://localhost:8080/docs
 
 ---
 
-## Run Standalone (bring your own PostgreSQL)
+## Compose Files
 
-```bash
-docker run -d \
-  --name dicom-emulator \
-  -p 8080:8080 \
-  -e DATABASE_URL=postgresql+asyncpg://user:pass@your-postgres:5432/dicom_db \
-  -v dicom-data:/data/dicom \
-  rhavekost/azure-dicom-service-emulator:latest
-```
+| File | What it runs |
+|------|-------------|
+| `docker-compose.yml` | Emulator + PostgreSQL (default, no Azurite) |
+| `docker-compose.full.yml` | + Azurite for Azure Storage Queue events |
+| `docker-compose.external-db.yml` | Emulator only — reads `DATABASE_URL` from env |
 
 ---
 

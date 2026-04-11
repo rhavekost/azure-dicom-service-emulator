@@ -60,26 +60,52 @@ Microsoft archived `microsoft/dicom-server` and there's no official local emulat
 
 ## Quick Start
 
+### Option 1 — Bundled Postgres (simplest)
+
 ```bash
-# Clone and start
-git clone https://github.com/kostlabs/azure-healthcare-workspace-emulator.git
-cd azure-healthcare-workspace-emulator
 docker compose up -d
 
-# Verify
 curl http://localhost:8080/health
-
-# Open API docs
 open http://localhost:8080/docs
+```
+
+DICOM files go in a named Docker volume (`dicom-data`). No Azurite required — event publishing is opt-in.
+
+### Option 2 — External Postgres (no bundled Postgres)
+
+```bash
+# Single container — just the emulator
+docker run -d \
+  --name dicom-emulator \
+  -p 8080:8080 \
+  -e DATABASE_URL="postgresql+asyncpg://user:pass@your-host:5432/dicom_db" \
+  -v dicom-data:/data/dicom \
+  rhavekost/azure-dicom-service-emulator:latest
+```
+
+Or via compose (reads `DATABASE_URL` from your shell environment):
+
+```bash
+export DATABASE_URL="postgresql+asyncpg://user:pass@your-host:5432/dicom_db"
+docker compose -f docker-compose.external-db.yml up -d
+```
+
+### Option 3 — Full stack (Azurite event publishing)
+
+Only needed when you want change-feed events delivered to an Azure Storage Queue:
+
+```bash
+docker compose -f docker-compose.full.yml up -d
+# Emulator: http://localhost:8080
+# Queue:    http://localhost:10001  (queue name: "dicom-events")
 ```
 
 ### With Orthanc (for plugin development)
 
 ```bash
 docker compose -f docker-compose.with-orthanc.yml up -d
-
-# Emulator: http://localhost:8080 (Azure DICOM Service API)
-# Orthanc:  http://localhost:8042 (Orthanc Explorer)
+# Emulator: http://localhost:8080
+# Orthanc:  http://localhost:8042
 ```
 
 ## Docker Hub
@@ -426,4 +452,4 @@ curl -k https://localhost:8081/health
 
 ## License
 
-MIT — [KostLabs](https://kostlabs.com)
+MIT — Rob Havekost
