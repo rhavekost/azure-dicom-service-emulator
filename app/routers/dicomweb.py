@@ -76,6 +76,11 @@ QIDO_TAG_MAP = {
     "00080090": "referring_physician_name",
 }
 
+# ── QIDO-RS Study UID parameter keys ──────────────────────────────
+# Used to strip StudyInstanceUID from query params before delegating to
+# _parse_qido_params in study-scoped endpoints, preventing duplicate conditions.
+_STUDY_UID_KEYS: frozenset[str] = frozenset({"StudyInstanceUID", "0020000D"})
+
 # ── DICOM Failure Reason Codes ─────────────────────────────────────
 # Used in STOW-RS FailedSOPSequence responses (tag 0x00081197)
 FAILURE_REASON_UNABLE_TO_PROCESS = 0xC000  # Processing failure
@@ -1118,6 +1123,8 @@ async def qido_rs_all_series(
     # Step 1: Get paginated DISTINCT series UIDs ordered consistently.
     # Applying limit/offset here operates at the series level, not the instance
     # level, so pagination is semantically correct.
+    # ORDER BY series_instance_uid ensures stable, deterministic pagination across
+    # pages (alphabetical ordering of UIDs is arbitrary but consistent).
     base_filter = and_(*filters) if filters else true()
     distinct_series_query = (
         select(DicomInstance.series_instance_uid)
@@ -1136,6 +1143,10 @@ async def qido_rs_all_series(
     # Step 2: Fetch one representative instance per series UID from step 1.
     # Also re-apply the original filters so attributes like Modality are
     # consistent with what was requested.
+    # ORDER BY study_date.desc() picks the most-recent instance as the
+    # representative for each series (used for the series date attribute),
+    # not to control the series ordering in the response — that is determined
+    # by series_uids (Step 1) which is already sorted by series_instance_uid.
     rep_query = (
         select(DicomInstance)
         .where(and_(base_filter, DicomInstance.series_instance_uid.in_(series_uids)))
@@ -1144,8 +1155,12 @@ async def qido_rs_all_series(
     rep_result = await db.execute(rep_query)
     all_matching = rep_result.scalars().all()
 
-    # Pick one representative instance per series and count all instances
-    # returned from the representative query (they share the same filters).
+    # Pick one representative instance per series and count matching instances.
+    # Note: This count reflects only instances matching the current query filters,
+    # which deviates from PS3.18's definition of NumberOfSeriesRelatedInstances as
+    # the total count of all instances in the series regardless of query filters.
+    # Emulator context: a separate unfiltered COUNT query per series is omitted
+    # for simplicity.
     seen_series: dict[str, DicomInstance] = {}
     instance_count: dict[str, int] = {}
     for inst in all_matching:
@@ -1251,14 +1266,21 @@ async def qido_rs_study_instances(
 
     # Strip StudyInstanceUID from query params so _parse_qido_params cannot add
     # a conflicting second condition if the caller also passes ?StudyInstanceUID=.
-    _STUDY_UID_KEYS = {"StudyInstanceUID", "0020000D"}
+    # Only single-value params are passed here; includefield is handled separately
+    # via getlist() below.
     filtered_params = {k: v for k, v in request.query_params.items() if k not in _STUDY_UID_KEYS}
 
     # Parse additional QIDO filters from the scrubbed query params
     extra_filters = _parse_qido_params(filtered_params, fuzzymatching)
 
     conditions = base_conditions + extra_filters
-    query = select(DicomInstance).where(and_(*conditions)).offset(offset).limit(limit)
+    query = (
+        select(DicomInstance)
+        .where(and_(*conditions))
+        .order_by(DicomInstance.study_date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
 
     result = await db.execute(query)
     instances = result.scalars().all()
