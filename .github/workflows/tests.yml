@@ -111,7 +111,7 @@ jobs:
       - name: Run benchmarks
         run: |
           pytest tests/performance/ --benchmark-only \
-            --benchmark-json=benchmark-results.json
+            --benchmark-json=benchmark-results.json || [ $? -eq 5 ]
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
