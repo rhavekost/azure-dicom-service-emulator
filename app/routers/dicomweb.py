@@ -18,11 +18,12 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy
+from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy, Operation
 from app.models.events import DicomEvent
 from app.services.accept_validation import (
     validate_accept_for_rendered,
@@ -87,6 +88,130 @@ _STUDY_UID_KEYS: frozenset[str] = frozenset({"StudyInstanceUID", "0020000D"})
 FAILURE_REASON_UNABLE_TO_PROCESS = 0xC000  # Processing failure
 FAILURE_REASON_UID_MISMATCH = 0xC409  # StudyInstanceUID mismatch
 FAILURE_REASON_INSTANCE_ALREADY_EXISTS = 45070  # Instance already exists (0xB00E hex)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Bulk Update — POST /studies/$bulkUpdate
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Tags in changeDataset that map to indexed columns on DicomInstance.
+_BULK_UPDATE_TAG_TO_COLUMN: dict[str, str] = {
+    "00100020": "patient_id",
+    "00100010": "patient_name",
+    "00080020": "study_date",
+    "00080050": "accession_number",
+    "00081030": "study_description",
+    "00080060": "modality",
+}
+
+
+class BulkUpdateRequest(BaseModel):
+    """Request body for POST /v2/studies/$bulkUpdate."""
+
+    study_instance_uids: list[str] | None = Field(default=None, alias="studyInstanceUids")
+    change_dataset: dict | None = Field(default=None, alias="changeDataset")
+
+    model_config = {"populate_by_name": True}
+
+
+def _extract_scalar_value(tag_entry: dict) -> str | None:
+    """Extract a simple string value from a DICOM JSON tag entry.
+
+    Returns the first Value element as a string when it is a plain scalar,
+    or None when the Value list is empty or the entry has no Value key.
+    """
+    values = tag_entry.get("Value")
+    if not values:
+        return None
+    first = values[0]
+    if isinstance(first, str):
+        return first
+    # Person name object — return Alphabetic component
+    if isinstance(first, dict):
+        return first.get("Alphabetic")
+    return None
+
+
+@router.post("/studies/$bulkUpdate", status_code=202)
+async def bulk_update_studies(
+    request: Request,
+    body: BulkUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Bulk-update DICOM metadata across all instances in the specified studies.
+
+    Merges ``changeDataset`` tags into each instance's ``dicom_json``.
+    Also updates indexed columns for known tags.
+    Creates a ``ChangeFeedEntry`` (state=replaced) per updated instance.
+    Returns 202 with a Location header pointing to the created operation.
+
+    Azure v2 behaviour:
+    - Study UIDs that do not exist are silently skipped.
+    - 400 if ``studyInstanceUids`` is absent/empty.
+    - 400 if ``changeDataset`` is absent/empty.
+    """
+    if not body.study_instance_uids:
+        raise HTTPException(status_code=400, detail="studyInstanceUids must not be empty")
+    if not body.change_dataset:
+        raise HTTPException(status_code=400, detail="changeDataset must not be empty")
+
+    operation_id = uuid.uuid4()
+
+    # Create the operation record up front (will be committed with instance updates)
+    operation = Operation(
+        id=operation_id,
+        type="bulk-update",
+        status="running",
+        percent_complete=0,
+    )
+    db.add(operation)
+
+    updated_count = 0
+
+    for study_uid in body.study_instance_uids:
+        result = await db.execute(
+            select(DicomInstance).where(DicomInstance.study_instance_uid == study_uid)
+        )
+        instances = result.scalars().all()
+
+        for inst in instances:
+            # Merge change_dataset into dicom_json (immutable dict update)
+            updated_json = {**inst.dicom_json, **body.change_dataset}
+            inst.dicom_json = updated_json
+
+            # Update indexed columns for known tags
+            for tag, column in _BULK_UPDATE_TAG_TO_COLUMN.items():
+                if tag in body.change_dataset:
+                    new_value = _extract_scalar_value(body.change_dataset[tag])
+                    setattr(inst, column, new_value)
+
+            # Create a change feed entry for this update
+            feed_entry = ChangeFeedEntry(
+                study_instance_uid=inst.study_instance_uid,
+                series_instance_uid=inst.series_instance_uid,
+                sop_instance_uid=inst.sop_instance_uid,
+                action="update",
+                state="replaced",
+                dicom_metadata=updated_json,
+            )
+            db.add(feed_entry)
+            updated_count += 1
+
+    # Mark operation as succeeded
+    operation.status = "succeeded"
+    operation.percent_complete = 100
+    operation.results = {
+        "studiesUpdated": len(body.study_instance_uids),
+        "instancesUpdated": updated_count,
+    }
+
+    await db.commit()
+
+    location = str(request.base_url).rstrip("/") + f"/v2/operations/{operation_id}"
+    return Response(
+        status_code=202,
+        headers={"Location": location},
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
