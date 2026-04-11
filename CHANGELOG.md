@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-04-11
+
+### Fixed
+- UPS-RS duplicate workitem `POST /v2/workitems/{uid}` without a transaction-uid now
+  correctly returns 409 Conflict instead of falling through to the update path (400)
+- Restored `_UNSET` sentinel identity in test factories — broken sentinel caused
+  `study_date=None` to be indistinguishable from the default, producing wrong STOW status codes
+
+### Changed
+- Dependency updates: uvicorn 0.44, numpy 2.4.4, aiofiles 25.1, safety 3.7, ruff 0.15,
+  pytest-xdist 3.8; GitHub Actions SHA pins refreshed
+
 ## [0.3.1] - 2026-04-11
 
 ### Fixed
