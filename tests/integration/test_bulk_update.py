@@ -27,6 +27,8 @@ STUDY_UID_10 = "2.25.100000000000000000000000000000000010"
 STUDY_UID_11 = "2.25.100000000000000000000000000000000011"
 STUDY_UID_12 = "2.25.100000000000000000000000000000000012"
 STUDY_UID_13 = "2.25.100000000000000000000000000000000013"
+STUDY_UID_14 = "2.25.100000000000000000000000000000000014"
+STUDY_UID_15 = "2.25.100000000000000000000000000000000015"
 NONEXISTENT_UID = "9.9.9.99999999"
 
 
@@ -423,3 +425,64 @@ async def test_bulk_update_updates_dicom_study_patient_id(client: TestClient, db
     assert (
         dicom_study.patient_id == "STUDY_AFTER"
     ), f"DicomStudy.patient_id should be 'STUDY_AFTER', got {dicom_study.patient_id!r}"
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  9. Operation results — studiesUpdated / instancesUpdated accuracy
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def test_bulk_update_operation_results_counts(client: TestClient):
+    """Operation results should report correct studiesUpdated and instancesUpdated."""
+    store_instance(
+        client,
+        DicomFactory.create_ct_image(study_uid=STUDY_UID_14, patient_id="PAT_RESULTS"),
+    )
+
+    response = bulk_update(
+        client,
+        study_uids=[STUDY_UID_14],
+        change_dataset={"00100020": {"vr": "LO", "Value": ["RESULTS_UPDATED"]}},
+    )
+
+    assert response.status_code == 202
+    location = response.headers["location"]
+    op_data = client.get(location).json()
+
+    assert op_data["status"] == "succeeded"
+    results = op_data.get("results", {})
+    assert results["studiesUpdated"] == 1
+    assert results["instancesUpdated"] == 1
+
+
+def test_bulk_update_studies_updated_excludes_nonexistent_uids(client: TestClient):
+    """studiesUpdated should count only studies that actually existed and were updated.
+
+    When 3 UIDs are requested but 1 does not exist, studiesUpdated must be 2,
+    not 3.
+    """
+    store_instance(
+        client,
+        DicomFactory.create_ct_image(study_uid=STUDY_UID_15, patient_id="PAT_SKIP_A"),
+    )
+    store_instance(
+        client,
+        DicomFactory.create_ct_image(study_uid=STUDY_UID_6, patient_id="PAT_SKIP_B"),
+    )
+
+    response = bulk_update(
+        client,
+        study_uids=[STUDY_UID_15, STUDY_UID_6, NONEXISTENT_UID],
+        change_dataset={"00100020": {"vr": "LO", "Value": ["SKIP_UPDATED"]}},
+    )
+
+    assert response.status_code == 202
+    location = response.headers["location"]
+    op_data = client.get(location).json()
+
+    assert op_data["status"] == "succeeded"
+    results = op_data.get("results", {})
+    assert (
+        results["studiesUpdated"] == 2
+    ), f"Expected studiesUpdated=2 (1 non-existent UID skipped), got {results['studiesUpdated']}"
+    assert results["instancesUpdated"] == 2

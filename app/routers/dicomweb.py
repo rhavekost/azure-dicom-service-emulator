@@ -124,6 +124,10 @@ def _extract_scalar_value(tag_entry: dict) -> str | None:
 
     Returns the first Value element as a string when it is a plain scalar,
     or None when the Value list is empty or the entry has no Value key.
+
+    Note: Integer VR values (IS, DS) are not supported — returns None for
+    non-string, non-PN values.  Only use this helper with string-valued DICOM
+    tags (LO, LT, SH, DA, CS, etc.).
     """
     values = tag_entry.get("Value")
     if not values:
@@ -172,60 +176,71 @@ async def bulk_update_studies(
     db.add(operation)
 
     updated_count = 0
+    studies_updated_count = 0
 
-    for study_uid in body.study_instance_uids:
-        result = await db.execute(
-            select(DicomInstance).where(DicomInstance.study_instance_uid == study_uid)
-        )
-        instances = result.scalars().all()
-
-        for inst in instances:
-            # Merge change_dataset into dicom_json (immutable dict update)
-            updated_json = {**inst.dicom_json, **body.change_dataset}
-            inst.dicom_json = updated_json
-
-            # Update indexed columns for known tags
-            for tag, column in _BULK_UPDATE_TAG_TO_COLUMN.items():
-                if tag in body.change_dataset:
-                    new_value = _extract_scalar_value(body.change_dataset[tag])
-                    setattr(inst, column, new_value)
-
-            # Create a change feed entry for this update
-            feed_entry = ChangeFeedEntry(
-                study_instance_uid=inst.study_instance_uid,
-                series_instance_uid=inst.series_instance_uid,
-                sop_instance_uid=inst.sop_instance_uid,
-                action="update",
-                state="replaced",
-                dicom_metadata=updated_json,
+    try:
+        for study_uid in body.study_instance_uids:
+            result = await db.execute(
+                select(DicomInstance).where(DicomInstance.study_instance_uid == study_uid)
             )
-            db.add(feed_entry)
-            updated_count += 1
+            instances = result.scalars().all()
 
-        if instances:
-            # Update (or create) the DicomStudy record for this study with
-            # whichever changeDataset tags map to DicomStudy columns.
-            study_result = await db.execute(
-                select(DicomStudy).where(DicomStudy.study_instance_uid == study_uid)
-            )
-            dicom_study = study_result.scalar_one_or_none()
-            if dicom_study is None:
-                dicom_study = DicomStudy(study_instance_uid=study_uid)
-                db.add(dicom_study)
-            for tag, column in _BULK_UPDATE_TAG_TO_STUDY_COLUMN.items():
-                if tag in body.change_dataset:
-                    new_value = _extract_scalar_value(body.change_dataset[tag])
-                    setattr(dicom_study, column, new_value)
+            for inst in instances:
+                # Merge change_dataset into dicom_json (immutable dict update)
+                updated_json = {**inst.dicom_json, **body.change_dataset}
+                inst.dicom_json = updated_json
 
-    # Mark operation as succeeded
-    operation.status = "succeeded"
-    operation.percent_complete = 100
-    operation.results = {
-        "studiesUpdated": len(body.study_instance_uids),
-        "instancesUpdated": updated_count,
-    }
+                # Update indexed columns for known tags
+                for tag, column in _BULK_UPDATE_TAG_TO_COLUMN.items():
+                    if tag in body.change_dataset:
+                        new_value = _extract_scalar_value(body.change_dataset[tag])
+                        setattr(inst, column, new_value)
 
-    await db.commit()
+                # Create a change feed entry for this update
+                feed_entry = ChangeFeedEntry(
+                    study_instance_uid=inst.study_instance_uid,
+                    series_instance_uid=inst.series_instance_uid,
+                    sop_instance_uid=inst.sop_instance_uid,
+                    action="update",
+                    state="replaced",
+                    dicom_metadata=updated_json,
+                )
+                db.add(feed_entry)
+                updated_count += 1
+
+            if instances:
+                studies_updated_count += 1
+                # Update (or create) the DicomStudy record for this study with
+                # whichever changeDataset tags map to DicomStudy columns.
+                study_result = await db.execute(
+                    select(DicomStudy).where(DicomStudy.study_instance_uid == study_uid)
+                )
+                dicom_study = study_result.scalar_one_or_none()
+                if dicom_study is None:
+                    dicom_study = DicomStudy(study_instance_uid=study_uid)
+                    db.add(dicom_study)
+                for tag, column in _BULK_UPDATE_TAG_TO_STUDY_COLUMN.items():
+                    if tag in body.change_dataset:
+                        new_value = _extract_scalar_value(body.change_dataset[tag])
+                        setattr(dicom_study, column, new_value)
+
+        # Mark operation as succeeded
+        operation.status = "succeeded"
+        operation.percent_complete = 100
+        operation.results = {
+            "studiesUpdated": studies_updated_count,
+            "instancesUpdated": updated_count,
+        }
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        operation.status = "failed"
+        try:
+            await db.commit()  # best-effort to save the failed status
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Bulk update failed")
 
     location = str(request.base_url).rstrip("/") + f"/v2/operations/{operation_id}"
     return Response(
