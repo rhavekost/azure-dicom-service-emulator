@@ -158,18 +158,24 @@ class Operation(Base):
 
     __tablename__ = "operations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    type = Column(String(64), nullable=False)  # add-extended-query-tag, reindex, bulk-update
-    status = Column(String(16), nullable=False, default="running")  # running, succeeded, failed
-    percent_complete = Column(Integer, default=0)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    type: Mapped[str] = mapped_column(
+        String(64), nullable=False
+    )  # add-extended-query-tag, reindex, bulk-update
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="running"
+    )  # running, succeeded, failed
+    percent_complete: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-    results = Column(JSON, default=dict)
-    errors = Column(JSON, default=list)
+    results: Mapped[dict] = mapped_column(JSON, default=dict)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
 
 
 class Workitem(Base):
