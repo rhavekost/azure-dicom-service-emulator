@@ -83,11 +83,11 @@ async def test_post_duplicate_instance_returns_409(db_session, storage_dir, monk
         response1 = await client.post("/v2/studies", content=body, headers=headers)
         assert response1.status_code in (200, 202)
 
-        # Second upload of same instance - should return 409
+        # Second upload of same instance - should return 202 with warning 45070
         response2 = await client.post("/v2/studies", content=body, headers=headers)
-        assert response2.status_code == 409
+        assert response2.status_code == 202
 
-        # Verify response contains conflict information
+        # Verify response contains warning information
         data = response2.json()
         assert "00081198" in data  # Failed SOP Sequence
         failed = data["00081198"]["Value"][0]
