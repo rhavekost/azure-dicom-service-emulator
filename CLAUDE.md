@@ -253,11 +253,10 @@ docker buildx build --platform linux/amd64 -t <registry>/azure-dicom-emulator:v1
 
 ## Known Limitations
 
-- No bulk import/export (yet)
-- No Worklist Service (UPS-RS) support (yet)
+- No bulk import/export
 - No data partitioning
 - No Azure RBAC/Managed Identity auth enforcement
-- Pixel data retrieval is basic (no frame-level or rendered endpoints yet)
+- UPS-RS subscriptions return 501 Not Implemented (subscribe/unsubscribe stubs only)
 
 ## Contributing Guidelines
 
@@ -277,4 +276,4 @@ docker buildx build --platform linux/amd64 -t <registry>/azure-dicom-emulator:v1
 
 ## License
 
-MIT - [KostLabs](https://kostlabs.com)
+MIT - Rob Havekost
