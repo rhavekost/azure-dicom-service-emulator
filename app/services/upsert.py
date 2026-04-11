@@ -18,6 +18,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.dicom import DicomInstance
 
 
+def _try_unlink(path: Path) -> None:
+    """Unlink a file, ignoring FileNotFoundError (EAFP)."""
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _try_rmdir(path: Path) -> None:
+    """Remove a directory if empty, ignoring OSError (EAFP, atomic check)."""
+    try:
+        path.rmdir()  # atomic: raises OSError if non-empty or missing
+    except OSError:
+        pass
+
+
 async def upsert_instance(
     db: AsyncSession,
     study_uid: str,
@@ -83,31 +99,19 @@ async def delete_instance(
     if not instance:
         return
 
-    # Delete file from filesystem
+    # Delete file from filesystem (EAFP — avoids TOCTOU race)
     file_path = Path(instance.file_path)
-    if await asyncio.to_thread(file_path.exists):
-        await asyncio.to_thread(file_path.unlink)
+    await asyncio.to_thread(_try_unlink, file_path)
 
-        # Clean up parent directory if empty (instance level)
-        instance_dir = file_path.parent
-        if await asyncio.to_thread(instance_dir.exists) and not any(
-            await asyncio.to_thread(list, instance_dir.iterdir())
-        ):
-            await asyncio.to_thread(instance_dir.rmdir)
+    # Clean up empty ancestor directories (instance → series → study)
+    instance_dir = file_path.parent
+    await asyncio.to_thread(_try_rmdir, instance_dir)
 
-            # Clean up series directory if empty
-            series_dir = instance_dir.parent
-            if await asyncio.to_thread(series_dir.exists) and not any(
-                await asyncio.to_thread(list, series_dir.iterdir())
-            ):
-                await asyncio.to_thread(series_dir.rmdir)
+    series_dir = instance_dir.parent
+    await asyncio.to_thread(_try_rmdir, series_dir)
 
-                # Clean up study directory if empty
-                study_dir = series_dir.parent
-                if await asyncio.to_thread(study_dir.exists) and not any(
-                    await asyncio.to_thread(list, study_dir.iterdir())
-                ):
-                    await asyncio.to_thread(study_dir.rmdir)
+    study_dir = series_dir.parent
+    await asyncio.to_thread(_try_rmdir, study_dir)
 
     # Delete from database
     delete_stmt = sql_delete(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)

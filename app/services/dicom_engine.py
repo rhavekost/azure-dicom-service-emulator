@@ -214,8 +214,10 @@ async def read_instance(file_path: str) -> bytes:
 
 async def delete_instance_file(file_path: str) -> None:
     """Remove a DICOM instance file from disk."""
-    if await asyncio.to_thread(os.path.exists, file_path):
+    try:
         await asyncio.to_thread(os.remove, file_path)
+    except FileNotFoundError:
+        pass
 
 
 def validate_required_attributes(ds: Dataset) -> list[str]:
