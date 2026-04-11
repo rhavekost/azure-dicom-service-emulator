@@ -13,7 +13,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
@@ -109,17 +109,20 @@ def _extract_scalar_value(tag_entry: dict) -> str | None:
     "/studies/$bulkUpdate",
     status_code=202,
     response_class=Response,
-    responses={
-        202: {
-            "description": "Bulk update started. Location header points to the operation.",
-            "headers": {
-                "Location": {
-                    "description": "URL of the created operation",
-                    "schema": {"type": "string"},
-                }
-            },
-        }
-    },
+    responses=cast(
+        dict[int | str, dict[str, Any]],
+        {
+            202: {
+                "description": "Bulk update started. Location header points to the operation.",
+                "headers": {
+                    "Location": {
+                        "description": "URL of the created operation",
+                        "schema": {"type": "string"},
+                    }
+                },
+            }
+        },
+    ),
 )
 async def bulk_update_studies(
     request: Request,
@@ -468,7 +471,7 @@ async def _publish_stow_events(
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-_STOW_RESPONSES = {
+_STOW_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "All instances stored successfully",
         "content": {

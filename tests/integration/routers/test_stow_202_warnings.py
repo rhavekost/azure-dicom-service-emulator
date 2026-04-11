@@ -389,7 +389,9 @@ async def test_status_code_logic_completeness(db_session, storage_dir, monkeypat
                 "Content-Type": f"multipart/related; type=application/dicom; boundary={boundary}"
             },
         )
-        assert response2.status_code == 409, "All failures (duplicate) should return 409"
+        assert (
+            response2.status_code == 202
+        ), "All-duplicate POST should return 202 with warning 45070"
 
         # Scenario 3: Partial success (valid + duplicate) → 202
         dcm3, _, _, _ = create_test_dicom_bytes(sop_uid="1.2.3.4.3")
