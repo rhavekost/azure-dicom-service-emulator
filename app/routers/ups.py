@@ -61,7 +61,7 @@ async def create_workitem(
 
 @router.post(
     "/workitems/{workitem_uid}",
-    status_code=201,
+    status_code=201,  # 201 is the default/primary; 200 is returned manually on the update path
     responses={200: {"description": "Workitem updated successfully"}},
     summary="Create or update workitem with UID in path (UPS-RS)",
 )
@@ -75,8 +75,9 @@ async def create_or_update_workitem(
     Create or update a workitem, routing by existence + ``transaction-uid``.
 
     - Workitem does **not** exist → create (``transaction-uid`` must be absent).
-    - Workitem **exists** + ``transaction-uid`` present → update (Azure SDK
-      conformance statement §10.5: ``POST /v2/workitems/{uid}?transaction-uid=xxx``).
+    - Workitem **exists** + ``transaction-uid`` present → update. Accepted as
+      query param (``?transaction-uid=xxx``, Azure SDK conformance §10.5) or
+      as ``Transaction-UID`` request header.
     - Workitem **exists** + no ``transaction-uid`` → update SCHEDULED workitem
       (no transaction lock required for SCHEDULED state).
 
