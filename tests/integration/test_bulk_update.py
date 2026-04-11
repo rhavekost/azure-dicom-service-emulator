@@ -324,6 +324,38 @@ def test_bulk_update_empty_change_dataset_returns_400(client: TestClient):
     assert response.status_code == 400
 
 
+def test_bulk_update_malformed_change_dataset_tag_returns_400(client: TestClient):
+    """changeDataset tag entry missing 'vr' key should return 400 Bad Request."""
+    response = client.post(
+        "/v2/studies/$bulkUpdate",
+        json={
+            "studyInstanceUids": [STUDY_UID_10],
+            "changeDataset": {
+                # Missing 'vr' key — not a valid DICOM JSON tag entry
+                "00100020": "INVALID_PATIENT_ID"
+            },
+        },
+    )
+    assert response.status_code == 400
+    assert "00100020" in response.json()["detail"]
+
+
+def test_bulk_update_change_dataset_tag_without_vr_key_returns_400(client: TestClient):
+    """changeDataset tag entry that is a dict but lacks 'vr' should return 400."""
+    response = client.post(
+        "/v2/studies/$bulkUpdate",
+        json={
+            "studyInstanceUids": [STUDY_UID_10],
+            "changeDataset": {
+                # Dict present but 'vr' key is absent
+                "00100020": {"Value": ["MISSING_VR"]}
+            },
+        },
+    )
+    assert response.status_code == 400
+    assert "00100020" in response.json()["detail"]
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  6. Multiple instances in a study
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

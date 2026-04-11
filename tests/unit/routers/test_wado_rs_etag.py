@@ -217,6 +217,46 @@ class TestMultiValueIfNoneMatch:
         assert len(response.content) > 0
 
 
+# ── ETag invalidation after bulk update ──────────────────────────────
+
+
+class TestETagInvalidatedAfterBulkUpdate:
+    """ETag must change after a bulk update modifies the study's metadata."""
+
+    def test_etag_changes_after_bulk_update(self, client, stored_instance):
+        """Bulk-updating PatientID must produce a new ETag and invalidate the old one."""
+        url = _study_metadata_url(stored_instance)
+
+        # 1. Capture the ETag before the update
+        before = client.get(url)
+        assert before.status_code == 200
+        etag_before = before.headers["etag"]
+
+        # 2. Perform a bulk update that changes PatientID
+        update_response = client.post(
+            "/v2/studies/$bulkUpdate",
+            json={
+                "studyInstanceUids": [stored_instance["study_uid"]],
+                "changeDataset": {"00100020": {"vr": "LO", "Value": ["UPDATED-PATIENT-ID"]}},
+            },
+        )
+        assert update_response.status_code == 202
+
+        # 3. Fetch the ETag after the update
+        after = client.get(url)
+        assert after.status_code == 200
+        etag_after = after.headers["etag"]
+
+        # 4. The ETag must have changed
+        assert etag_before != etag_after, "ETag was not invalidated after bulk update"
+
+        # 5. The old ETag must now return 200 (not 304) — it is stale
+        stale_response = client.get(url, headers={"If-None-Match": etag_before})
+        assert (
+            stale_response.status_code == 200
+        ), "Old ETag still returns 304 after bulk update — caching semantics are wrong"
+
+
 # ── Wildcard on non-existent resource ────────────────────────────────
 
 

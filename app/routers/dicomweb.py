@@ -141,6 +141,8 @@ def _extract_scalar_value(tag_entry: dict) -> str | None:
     return None
 
 
+# NOTE: This route must appear before POST /studies/{study_instance_uid} (STOW-RS)
+# so FastAPI matches the literal "$bulkUpdate" segment before treating it as a path param.
 @router.post("/studies/$bulkUpdate", status_code=202)
 async def bulk_update_studies(
     request: Request,
@@ -163,6 +165,15 @@ async def bulk_update_studies(
         raise HTTPException(status_code=400, detail="studyInstanceUids must not be empty")
     if not body.change_dataset:
         raise HTTPException(status_code=400, detail="changeDataset must not be empty")
+
+    # Validate changeDataset structure: each tag entry must be a DICOM JSON object
+    # containing a "vr" key (e.g. {"vr": "LO", "Value": [...]}).
+    for tag_key, tag_value in body.change_dataset.items():
+        if not isinstance(tag_value, dict) or "vr" not in tag_value:
+            raise HTTPException(
+                status_code=400,
+                detail=f"changeDataset tag '{tag_key}' must be a DICOM JSON object with a 'vr' key",
+            )
 
     operation_id = uuid.uuid4()
 
