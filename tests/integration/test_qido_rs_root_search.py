@@ -555,3 +555,137 @@ def test_get_all_instances_fuzzymatching(client: TestClient):
     assert response.status_code == 200
     instances = response.json()
     assert len(instances) >= 1
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  includefield tests — Issue 4
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def test_get_all_series_includefield(client: TestClient):
+    """GET /v2/series?includefield=all returns all available tags."""
+    dcm = DicomFactory.create_ct_image(patient_id="SERIES-INC-001", patient_name="Include^Series")
+    store_dicom(client, dcm)
+
+    response = client.get(
+        "/v2/series",
+        params={"includefield": "all"},
+        headers={"Accept": "application/dicom+json"},
+    )
+
+    assert response.status_code == 200
+    series_list = response.json()
+    assert len(series_list) >= 1
+    # With includefield=all the required series tags must still be present
+    first = series_list[0]
+    assert "0020000D" in first  # StudyInstanceUID
+    assert "0020000E" in first  # SeriesInstanceUID
+
+
+def test_get_all_instances_includefield(client: TestClient):
+    """GET /v2/instances?includefield=all returns all available instance tags."""
+    dcm = DicomFactory.create_ct_image(patient_id="INST-INC-001", patient_name="Include^Inst")
+    store_dicom(client, dcm)
+
+    response = client.get(
+        "/v2/instances",
+        params={"includefield": "all"},
+        headers={"Accept": "application/dicom+json"},
+    )
+
+    assert response.status_code == 200
+    instances = response.json()
+    assert len(instances) >= 1
+    first = instances[0]
+    assert "00080018" in first  # SOPInstanceUID
+    assert "0020000D" in first  # StudyInstanceUID
+    assert "0020000E" in first  # SeriesInstanceUID
+
+
+def test_get_study_instances_includefield(client: TestClient):
+    """GET /v2/studies/{study}/instances?includefield=all returns all tags."""
+    import io
+
+    import pydicom
+
+    dcm_bytes = DicomFactory.create_ct_image(
+        patient_id="STUDY-INST-INC", patient_name="Include^StudyInst"
+    )
+    store_dicom(client, dcm_bytes)
+    ds = pydicom.dcmread(io.BytesIO(dcm_bytes))
+    study_uid = str(ds.StudyInstanceUID)
+
+    response = client.get(
+        f"/v2/studies/{study_uid}/instances",
+        params={"includefield": "all"},
+        headers={"Accept": "application/dicom+json"},
+    )
+
+    assert response.status_code == 200
+    instances = response.json()
+    assert len(instances) == 1
+    first = instances[0]
+    assert "00080018" in first  # SOPInstanceUID
+    assert "0020000D" in first  # StudyInstanceUID
+    assert "0020000E" in first  # SeriesInstanceUID
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  fuzzymatching for study-scoped instances — Issue 5
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def test_get_study_instances_fuzzymatching(client: TestClient):
+    """GET /v2/studies/{study}/instances?PatientName=...&fuzzymatching=true does prefix matching."""
+    import io
+
+    import pydicom
+
+    dcm_bytes = DicomFactory.create_ct_image(
+        patient_id="STUDY-INST-FUZZY", patient_name="Johnson^StudyInst"
+    )
+    store_dicom(client, dcm_bytes)
+    ds = pydicom.dcmread(io.BytesIO(dcm_bytes))
+    study_uid = str(ds.StudyInstanceUID)
+
+    # Fuzzy match on a prefix of the patient name
+    response = client.get(
+        f"/v2/studies/{study_uid}/instances",
+        params={"PatientName": "joh", "fuzzymatching": "true"},
+        headers={"Accept": "application/dicom+json"},
+    )
+
+    assert response.status_code == 200
+    instances = response.json()
+    assert len(instances) >= 1
+    # All returned instances must belong to the scoped study
+    for inst in instances:
+        assert inst["0020000D"]["Value"][0] == study_uid
+
+
+def test_get_study_instances_no_conflict_study_uid_in_query_params(client: TestClient):
+    """GET /v2/studies/{study}/instances path param wins over ?StudyInstanceUID= query param."""
+    import io
+
+    import pydicom
+
+    dcm_bytes = DicomFactory.create_ct_image(
+        patient_id="SCOPE-CONFLICT-001", patient_name="Conflict^StudyInst"
+    )
+    store_dicom(client, dcm_bytes)
+    ds = pydicom.dcmread(io.BytesIO(dcm_bytes))
+    study_uid = str(ds.StudyInstanceUID)
+
+    # Pass a *different* StudyInstanceUID as a query param — path param must win
+    response = client.get(
+        f"/v2/studies/{study_uid}/instances",
+        params={"StudyInstanceUID": "9.9.9.9999.9999.9999.conflict"},
+        headers={"Accept": "application/dicom+json"},
+    )
+
+    assert response.status_code == 200
+    instances = response.json()
+    # Should still return the instance for the path UID, not the conflicting query param
+    assert len(instances) >= 1
+    for inst in instances:
+        assert inst["0020000D"]["Value"][0] == study_uid

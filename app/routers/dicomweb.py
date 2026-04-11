@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -1115,25 +1115,53 @@ async def qido_rs_all_series(
     """
     filters = _parse_qido_params(request.query_params, fuzzymatching)
 
-    query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
-    query = query.offset(offset).limit(limit)
+    # Step 1: Get paginated DISTINCT series UIDs ordered consistently.
+    # Applying limit/offset here operates at the series level, not the instance
+    # level, so pagination is semantically correct.
+    base_filter = and_(*filters) if filters else true()
+    distinct_series_query = (
+        select(DicomInstance.series_instance_uid)
+        .where(base_filter)
+        .distinct()
+        .order_by(DicomInstance.series_instance_uid)
+        .offset(offset)
+        .limit(limit)
+    )
+    series_uid_result = await db.execute(distinct_series_query)
+    series_uids = [row[0] for row in series_uid_result.all()]
 
-    result = await db.execute(query)
-    instances = result.scalars().all()
+    if not series_uids:
+        return Response(content=_json_dumps([]), media_type="application/dicom+json")
 
-    # Group by series
-    series: dict[str, list] = {}
-    for inst in instances:
-        if inst.series_instance_uid not in series:
-            series[inst.series_instance_uid] = []
-        series[inst.series_instance_uid].append(inst)
+    # Step 2: Fetch one representative instance per series UID from step 1.
+    # Also re-apply the original filters so attributes like Modality are
+    # consistent with what was requested.
+    rep_query = (
+        select(DicomInstance)
+        .where(and_(base_filter, DicomInstance.series_instance_uid.in_(series_uids)))
+        .order_by(DicomInstance.study_date.desc(), DicomInstance.series_instance_uid)
+    )
+    rep_result = await db.execute(rep_query)
+    all_matching = rep_result.scalars().all()
+
+    # Pick one representative instance per series and count all instances
+    # returned from the representative query (they share the same filters).
+    seen_series: dict[str, DicomInstance] = {}
+    instance_count: dict[str, int] = {}
+    for inst in all_matching:
+        uid = inst.series_instance_uid
+        instance_count[uid] = instance_count.get(uid, 0) + 1
+        if uid not in seen_series:
+            seen_series[uid] = inst
 
     includefield_list = request.query_params.getlist("includefield")
     includefield = includefield_list if includefield_list else None
 
     response = []
-    for series_uid, series_instances in series.items():
-        first = series_instances[0]
+    for series_uid in series_uids:
+        if series_uid not in seen_series:
+            continue
+        first = seen_series[series_uid]
         series_json = {
             "0020000D": {"vr": "UI", "Value": [first.study_instance_uid]},
             "0020000E": {"vr": "UI", "Value": [series_uid]},
@@ -1145,7 +1173,7 @@ async def qido_rs_all_series(
             "00200011": {"vr": "IS", "Value": [first.series_number] if first.series_number else {}},
             "00201209": {
                 "vr": "IS",
-                "Value": [len(series_instances)],
+                "Value": [instance_count.get(series_uid, 1)],
             },  # NumberOfSeriesRelatedInstances
         }
         filtered_series_json = filter_dicom_json_by_includefield(
@@ -1181,7 +1209,7 @@ async def qido_rs_all_instances(
     filters = _parse_qido_params(request.query_params, fuzzymatching)
 
     query = select(DicomInstance).where(and_(*filters)) if filters else select(DicomInstance)
-    query = query.offset(offset).limit(limit)
+    query = query.order_by(DicomInstance.study_date.desc()).offset(offset).limit(limit)
 
     result = await db.execute(query)
     instances = result.scalars().all()
@@ -1218,11 +1246,16 @@ async def qido_rs_study_instances(
     - SeriesInstanceUID, SOPInstanceUID, PatientID, PatientName, Modality,
       fuzzymatching, limit, offset, includefield
     """
-    # Always scope to the requested study
+    # Always scope to the requested study (path param takes precedence).
     base_conditions = [DicomInstance.study_instance_uid == study_uid]
 
-    # Parse additional QIDO filters from query params
-    extra_filters = _parse_qido_params(request.query_params, fuzzymatching)
+    # Strip StudyInstanceUID from query params so _parse_qido_params cannot add
+    # a conflicting second condition if the caller also passes ?StudyInstanceUID=.
+    _STUDY_UID_KEYS = {"StudyInstanceUID", "0020000D"}
+    filtered_params = {k: v for k, v in request.query_params.items() if k not in _STUDY_UID_KEYS}
+
+    # Parse additional QIDO filters from the scrubbed query params
+    extra_filters = _parse_qido_params(filtered_params, fuzzymatching)
 
     conditions = base_conditions + extra_filters
     query = select(DicomInstance).where(and_(*conditions)).offset(offset).limit(limit)
