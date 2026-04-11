@@ -6,10 +6,12 @@ Contains:
 - ETag computation
 - Storage path and frame cache singleton
 - _mark_previous_feed_entries DB helper
+- _publish_change_event best-effort event publishing helper
 """
 
 import hashlib
 import json
+import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
 from app.models.dicom import ChangeFeedEntry
+from app.models.events import DicomEvent
 from app.services.frame_cache import FrameCache
+
+logger = logging.getLogger(__name__)
 
 # ── Storage path and frame cache ──────────────────────────────────
 DICOM_STORAGE_DIR = Path(_DICOM_STORAGE_DIR_STR)
@@ -70,3 +75,26 @@ async def _mark_previous_feed_entries(db: AsyncSession, sop_uid: str):
     )
     for entry in prev_entries.scalars().all():
         entry.state = "replaced"
+
+
+# ── Event publishing ───────────────────────────────────────────────
+
+
+async def _publish_change_event(event: DicomEvent, instance_uid: str) -> None:
+    """Publish a single DICOM change event (best-effort).
+
+    Errors are logged but never re-raised so that a DICOM operation already
+    committed to the database is never rolled back due to an event-publishing
+    failure.
+
+    Args:
+        event: The pre-built :class:`DicomEvent` to publish.
+        instance_uid: SOP Instance UID used only for the error log message.
+    """
+    try:
+        from main import get_event_manager
+
+        event_manager = get_event_manager()
+        await event_manager.publish(event)
+    except Exception as e:
+        logger.error("Failed to publish event for instance %s: %s", instance_uid, e)

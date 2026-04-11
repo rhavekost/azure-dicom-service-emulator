@@ -27,6 +27,7 @@ from app.routers._shared import (
     DICOM_STORAGE_DIR,
     _json_dumps,
     _mark_previous_feed_entries,
+    _publish_change_event,
 )
 from app.services.dicom_engine import (
     build_store_response,
@@ -434,21 +435,16 @@ async def _publish_stow_events(
     Best-effort: errors are logged but not re-raised so that the DICOM operation
     already committed to the database is never rolled back due to an event failure.
     """
+    service_url = str(request.base_url).rstrip("/")
     for instance, feed_entry in instances_to_publish:
-        try:
-            from main import get_event_manager
-
-            event_manager = get_event_manager()
-            event = DicomEvent.from_instance_created(
-                study_uid=instance.study_instance_uid,
-                series_uid=instance.series_instance_uid,
-                instance_uid=instance.sop_instance_uid,
-                sequence_number=feed_entry.sequence,
-                service_url=str(request.base_url).rstrip("/"),
-            )
-            await event_manager.publish(event)
-        except Exception as e:
-            logger.error(f"Failed to publish event for instance {instance.sop_instance_uid}: {e}")
+        event = DicomEvent.from_instance_created(
+            study_uid=instance.study_instance_uid,
+            series_uid=instance.series_instance_uid,
+            instance_uid=instance.sop_instance_uid,
+            sequence_number=feed_entry.sequence,
+            service_url=service_url,
+        )
+        await _publish_change_event(event, instance.sop_instance_uid)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

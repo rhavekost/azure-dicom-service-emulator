@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.dicom import ChangeFeedEntry, DicomInstance
 from app.models.events import DicomEvent
-from app.routers._shared import _mark_previous_feed_entries
+from app.routers._shared import _mark_previous_feed_entries, _publish_change_event
 from app.services.dicom_engine import delete_instance_file
 
 logger = logging.getLogger(__name__)
@@ -130,23 +130,15 @@ async def _delete_instances(
     await db.commit()
 
     # Publish DicomImageDeleted events (best-effort, after commit)
+    service_url = str(request.base_url).rstrip("/")
     for inst_data, feed_entry in deleted_instances_data:
-        try:
-            from main import get_event_manager
-
-            event_manager = get_event_manager()
-            event = DicomEvent.from_instance_deleted(
-                study_uid=inst_data["study_uid"],
-                series_uid=inst_data["series_uid"],
-                instance_uid=inst_data["instance_uid"],
-                sequence_number=feed_entry.sequence,  # Use ChangeFeedEntry sequence (int)
-                service_url=str(request.base_url).rstrip("/"),
-            )
-            await event_manager.publish(event)
-        except Exception as e:
-            # Log but don't fail the delete operation
-            logger.error(
-                f"Failed to publish delete event for instance {inst_data['instance_uid']}: {e}"
-            )
+        event = DicomEvent.from_instance_deleted(
+            study_uid=inst_data["study_uid"],
+            series_uid=inst_data["series_uid"],
+            instance_uid=inst_data["instance_uid"],
+            sequence_number=feed_entry.sequence,
+            service_url=service_url,
+        )
+        await _publish_change_event(event, inst_data["instance_uid"])
 
     return Response(status_code=204)
