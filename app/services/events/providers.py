@@ -1,10 +1,12 @@
 """Event provider base class and implementations."""
 
+import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+import aiofiles
 import httpx
 from azure.storage.queue import QueueClient
 from tenacity import (
@@ -70,20 +72,20 @@ class FileEventProvider(EventProvider):
 
     async def publish(self, event: DicomEvent) -> None:
         """Append event to JSON Lines file."""
-        # Create parent directory if needed
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Create parent directory if needed (non-blocking)
+        await asyncio.to_thread(self.file_path.parent.mkdir, parents=True, exist_ok=True)
 
-        # Append event as JSON line
-        with open(self.file_path, "a") as f:
-            f.write(json.dumps(event.to_dict()) + "\n")
+        # Append event as JSON line (non-blocking)
+        async with aiofiles.open(self.file_path, "a") as f:
+            await f.write(json.dumps(event.to_dict()) + "\n")
 
     async def publish_batch(self, events: list[DicomEvent]) -> None:
         """Append batch of events to JSON Lines file."""
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(self.file_path.parent.mkdir, parents=True, exist_ok=True)
 
-        with open(self.file_path, "a") as f:
+        async with aiofiles.open(self.file_path, "a") as f:
             for event in events:
-                f.write(json.dumps(event.to_dict()) + "\n")
+                await f.write(json.dumps(event.to_dict()) + "\n")
 
 
 class WebhookEventProvider(EventProvider):
