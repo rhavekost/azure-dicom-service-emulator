@@ -36,7 +36,7 @@ jobs:
           bandit -r app/ -c bandit.yaml -ll -f screen
 
       - name: Upload Bandit report
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: bandit-report
@@ -74,7 +74,7 @@ jobs:
         run: uv run safety check --json --output safety-report.json || true
 
       - name: Upload Safety report
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: safety-report
