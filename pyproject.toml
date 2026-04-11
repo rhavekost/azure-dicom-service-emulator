@@ -1,6 +1,6 @@
 [project]
 name = "azure-dicom-service-emulator"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local emulator for Azure Health Data Services DICOM Service"
 readme = "README.md"
 requires-python = ">=3.12"

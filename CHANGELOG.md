@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-11
+
+### Fixed
+- STOW-RS `POST` with all-duplicate instances now returns 202 (not 409) — DICOM code 45070
+  (0xB00E) is a warning, not a hard failure; only C-range codes drive 409
+- Extended Query Tags `POST` now accepts a bare JSON array (Azure API standard) in addition
+  to the wrapped `{"tags": [...]}` format
+- UPS-RS workitem `GET` returning 404 after create when using `?workitem=UID` query form —
+  query string is now parsed correctly for both bare `?{uid}` and named `?workitem={uid}`
+- `aiofiles` missing from `uv.lock` caused `ModuleNotFoundError` in Docker builds
+
 ## [0.3.0] - 2026-04-11
 
 ### Added
