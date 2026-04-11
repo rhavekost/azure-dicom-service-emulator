@@ -7,6 +7,7 @@ model (PS3.18 F.2) used by DICOMweb APIs.
 
 import asyncio
 import base64
+import logging
 import os
 import re
 from typing import Any
@@ -14,6 +15,8 @@ from typing import Any
 import aiofiles
 import pydicom
 from pydicom.dataset import Dataset
+
+logger = logging.getLogger(__name__)
 
 STORAGE_DIR = os.getenv("DICOM_STORAGE_DIR", "/data/dicom")
 
@@ -145,9 +148,11 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
                     # Encode as Base64
                     encoded = base64.b64encode(raw_bytes).decode("ascii")
                     entry["InlineBinary"] = encoded
-                except Exception:
-                    # If encoding fails, skip this element
-                    pass
+                except Exception as e:
+                    # If encoding fails, skip this element but log for debuggability
+                    logger.debug(
+                        "Skipping DICOM element %s (binary encoding failed): %s", tag_str, e
+                    )
         else:
             if elem.value is not None and str(elem.value).strip():
                 entry["Value"] = [str(elem.value)]
