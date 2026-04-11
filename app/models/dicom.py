@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     JSON,
     BigInteger,
-    Column,
     DateTime,
     Index,
     Integer,
@@ -93,7 +92,17 @@ class DicomInstance(Base):
 
     __table_args__ = (
         Index("ix_study_series", "study_instance_uid", "series_instance_uid"),
-        Index("ix_patient_study", "patient_id", "study_date"),
+        Index(
+            "ix_dicom_instances_patient_id_study_date",
+            "patient_id",
+            "study_date",
+        ),
+        Index(
+            "ix_dicom_instances_patient_name_gin",
+            "patient_name",
+            postgresql_using="gin",
+            postgresql_ops={"patient_name": "gin_trgm_ops"},
+        ),
     )
 
 
@@ -123,17 +132,23 @@ class ExtendedQueryTag(Base):
 
     __tablename__ = "extended_query_tags"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    path = Column(String(64), nullable=False, unique=True)  # e.g. "00100020"
-    vr = Column(String(4), nullable=False)  # DICOM VR (CS, LO, DA, etc.)
-    private_creator = Column(String(64))
-    level = Column(String(16), nullable=False)  # Study, Series, Instance
-    status = Column(String(16), nullable=False, default="Adding")  # Adding, Ready, Deleting
-    query_status = Column(String(16), default="Enabled")  # Enabled, Disabled
-    errors_count = Column(Integer, default=0)
-    operation_id = Column(UUID(as_uuid=True))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    path: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)  # e.g. "00100020"
+    vr: Mapped[str] = mapped_column(String(4), nullable=False)  # DICOM VR (CS, LO, DA, etc.)
+    private_creator: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    level: Mapped[str] = mapped_column(String(16), nullable=False)  # Study, Series, Instance
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="Adding"
+    )  # Adding, Ready, Deleting
+    query_status: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, default="Enabled"
+    )  # Enabled, Disabled
+    errors_count: Mapped[int] = mapped_column(Integer, default=0)
+    operation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
 
 
 class ExtendedQueryTagValue(Base):
@@ -141,11 +156,13 @@ class ExtendedQueryTagValue(Base):
 
     __tablename__ = "extended_query_tag_values"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    tag_id = Column(Integer, nullable=False, index=True)
-    resource_uid = Column(String(128), nullable=False)  # study/series/instance UID
-    resource_level = Column(String(16), nullable=False)
-    value = Column(String(512))
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tag_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    resource_uid: Mapped[str] = mapped_column(
+        String(128), nullable=False
+    )  # study/series/instance UID
+    resource_level: Mapped[str] = mapped_column(String(16), nullable=False)
+    value: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     __table_args__ = (
         Index("ix_eqt_tag_value", "tag_id", "value"),

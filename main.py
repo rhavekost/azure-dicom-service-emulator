@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
 from app.database import AsyncSessionLocal, Base, engine
@@ -44,6 +45,10 @@ async def expiry_cleanup_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create database tables and initialize event manager on startup."""
+    # Enable pg_trgm extension for GIN-based fuzzy text search on patient_name
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+
     # Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
