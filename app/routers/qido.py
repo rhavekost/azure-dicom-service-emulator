@@ -11,6 +11,7 @@ Endpoints:
 """
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import and_, select, true
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Shared OpenAPI response documentation for QIDO-RS endpoints ────
-_QIDO_RESPONSES = {
+_QIDO_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "Array of DICOM JSON objects matching the query",
         "content": {
