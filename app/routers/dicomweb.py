@@ -11,7 +11,6 @@ Implements:
 import hashlib
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
 from app.database import get_db
 from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy, Operation
 from app.models.events import DicomEvent
@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Initialize frame cache
-DICOM_STORAGE_DIR = Path(os.getenv("DICOM_STORAGE_DIR", "/data/dicom"))
+DICOM_STORAGE_DIR = Path(_DICOM_STORAGE_DIR_STR)
 frame_cache = FrameCache(DICOM_STORAGE_DIR)
 
 # ── Tag mapping for QIDO-RS query parameters ───────────────────────

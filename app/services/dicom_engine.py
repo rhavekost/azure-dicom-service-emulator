@@ -16,9 +16,9 @@ import aiofiles
 import pydicom
 from pydicom.dataset import Dataset
 
-logger = logging.getLogger(__name__)
+from app.config import DICOM_STORAGE_DIR as STORAGE_DIR
 
-STORAGE_DIR = os.getenv("DICOM_STORAGE_DIR", "/data/dicom")
+logger = logging.getLogger(__name__)
 
 # ── UID Validation (Security) ──────────────────────────────────────
 # DICOM UIDs must only contain digits and dots to prevent directory traversal

@@ -35,7 +35,8 @@ def load_providers_from_config() -> list[EventProvider]:
     """
     providers: list[EventProvider] = []
 
-    # Load configuration from environment variable
+    # Load configuration from environment variable.
+    # Read fresh each call so tests can patch via monkeypatch.setenv.
     config_json = os.getenv("EVENT_PROVIDERS")
     if not config_json:
         logger.info("No EVENT_PROVIDERS environment variable found, using empty provider list")

@@ -10,20 +10,20 @@ MIT License - KostLabs
 
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
 from app.database import AsyncSessionLocal, Base, engine
 from app.routers import changefeed, debug, dicomweb, extended_query_tags, operations, ups
 from app.services.events import EventManager, load_providers_from_config
 from app.services.expiry import delete_expired_studies
 
 logger = logging.getLogger(__name__)
-DICOM_STORAGE_DIR = Path(os.getenv("DICOM_STORAGE_DIR", "/data/dicom"))
+DICOM_STORAGE_DIR = Path(_DICOM_STORAGE_DIR_STR)
 
 
 # Global event manager instance
