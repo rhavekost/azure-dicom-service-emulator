@@ -134,19 +134,15 @@ class AzureStorageQueueProvider(EventProvider):
 
     async def publish(self, event: DicomEvent) -> None:
         """Send event to Azure Storage Queue."""
-        import json
-
         message = json.dumps(event.to_dict())
-        self.queue_client.send_message(message)
+        await asyncio.to_thread(self.queue_client.send_message, message)
 
     async def publish_batch(self, events: list[DicomEvent]) -> None:
         """Send batch of events to Azure Storage Queue."""
-        import json
-
         for event in events:
             message = json.dumps(event.to_dict())
-            self.queue_client.send_message(message)
+            await asyncio.to_thread(self.queue_client.send_message, message)
 
     async def close(self) -> None:
         """Close queue client connection."""
-        self.queue_client.close()
+        await asyncio.to_thread(self.queue_client.close)
