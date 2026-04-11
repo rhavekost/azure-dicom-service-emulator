@@ -45,6 +45,9 @@ async def upsert_instance(
     """
     Create or replace a DICOM instance.
 
+    The session is left uncommitted so the caller can include additional
+    writes (e.g. ChangeFeedEntry) in the same atomic transaction.
+
     Args:
         db: Database session
         study_uid: Study Instance UID
@@ -59,26 +62,44 @@ async def upsert_instance(
     Returns:
         "created" if instance was newly created
         "replaced" if instance was replaced
+
+    Note:
+        Caller is responsible for committing the session.
     """
     # Check if instance already exists
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
     result = await db.execute(stmt)
     existing_instance = result.scalar_one_or_none()
 
+    old_file_path: Path | None = None
     if existing_instance:
-        # Delete old instance
+        # Capture old file path before the DB row is removed
+        old_file_path = Path(existing_instance.file_path)
+        # Delete old DB row only (no filesystem touch yet)
         await delete_instance(db, study_uid, series_uid, sop_uid, storage_dir)
         action = "replaced"
     else:
         action = "created"
 
-    # Store new instance — if this fails, the delete above is not yet committed
-    try:
-        await store_instance(db, study_uid, series_uid, sop_uid, dcm_data, storage_dir)
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        raise
+    # Write new file + DB row.  If this raises, the caller's session rollback
+    # will undo the delete above, and the old file on disk is untouched.
+    await store_instance(db, study_uid, series_uid, sop_uid, dcm_data, storage_dir)
+
+    # Only remove the old file after the new one has been written successfully.
+    # At this point the new DCM bytes are on disk; losing the old file is safe.
+    # When UIDs are identical the path is the same and store_instance has
+    # already overwritten the file in-place — no unlink or rmdir needed.
+    if old_file_path is not None:
+        new_file_path = Path(storage_dir) / study_uid / series_uid / sop_uid / "instance.dcm"
+        if old_file_path != new_file_path:
+            instance_dir = old_file_path.parent
+            await asyncio.to_thread(_try_unlink, old_file_path)
+            # Clean up empty ancestor directories (instance → series → study)
+            series_dir = instance_dir.parent
+            study_dir = series_dir.parent
+            await asyncio.to_thread(_try_rmdir, instance_dir)
+            await asyncio.to_thread(_try_rmdir, series_dir)
+            await asyncio.to_thread(_try_rmdir, study_dir)
 
     return action
 
@@ -87,7 +108,12 @@ async def delete_instance(
     db: AsyncSession, study_uid: str, series_uid: str, sop_uid: str, storage_dir: str
 ) -> None:
     """
-    Delete a DICOM instance from database and filesystem.
+    Delete a DICOM instance from the database only.
+
+    Filesystem cleanup is intentionally omitted here so that the file is
+    never removed before the surrounding DB transaction is committed.
+    Callers that need to reclaim disk space (e.g. upsert_instance) must
+    perform the filesystem unlink themselves *after* the write succeeds.
 
     Args:
         db: Database session
@@ -95,29 +121,10 @@ async def delete_instance(
         series_uid: Series Instance UID
         sop_uid: SOP Instance UID
         storage_dir: Base directory for DICOM file storage
+
+    Note:
+        Caller is responsible for committing the session.
     """
-    # Get instance to find file path
-    stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
-    result = await db.execute(stmt)
-    instance = result.scalar_one_or_none()
-
-    if not instance:
-        return
-
-    # Delete file from filesystem (EAFP — avoids TOCTOU race)
-    file_path = Path(instance.file_path)
-    await asyncio.to_thread(_try_unlink, file_path)
-
-    # Clean up empty ancestor directories (instance → series → study)
-    instance_dir = file_path.parent
-    await asyncio.to_thread(_try_rmdir, instance_dir)
-
-    series_dir = instance_dir.parent
-    await asyncio.to_thread(_try_rmdir, series_dir)
-
-    study_dir = series_dir.parent
-    await asyncio.to_thread(_try_rmdir, study_dir)
-
     # Delete from database
     delete_stmt = sql_delete(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
     await db.execute(delete_stmt)
@@ -146,8 +153,7 @@ async def store_instance(
         storage_dir: Base directory for DICOM file storage
 
     Note:
-        This is a simplified placeholder implementation.
-        Full integration with existing STOW-RS logic will happen in Task 3.
+        Caller is responsible for committing the session.
     """
     # Create directory structure: storage_dir/study/series/instance/
     instance_dir = Path(storage_dir) / study_uid / series_uid / sop_uid

@@ -155,15 +155,20 @@ async def test_upsert_replaces_existing_instance(db_session, storage_dir, sample
 
 @pytest.mark.asyncio
 async def test_delete_instance(db_session, storage_dir, sample_dicom_data):
-    """Test delete_instance removes instance from DB and filesystem."""
+    """Test delete_instance removes instance from DB only; filesystem cleanup is caller's job."""
+    import asyncio
+
+    from app.services.upsert import _try_rmdir, _try_unlink
+
     study_uid = "1.2.3"
     series_uid = "1.2.3.4"
     sop_uid = "1.2.3.4.5"
 
-    # Create instance first (upsert_instance commits internally)
+    # Create instance first then commit (caller is responsible for committing)
     await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
+    await db_session.commit()
 
     # Get file path before deletion
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -173,7 +178,7 @@ async def test_delete_instance(db_session, storage_dir, sample_dicom_data):
 
     assert file_path.exists()
 
-    # Delete the instance and commit (delete_instance no longer auto-commits)
+    # delete_instance only removes the DB row; caller handles filesystem cleanup
     await delete_instance(db_session, study_uid, series_uid, sop_uid, storage_dir)
     await db_session.commit()
 
@@ -184,7 +189,16 @@ async def test_delete_instance(db_session, storage_dir, sample_dicom_data):
 
     assert instance is None
 
-    # Verify file was deleted
+    # File still exists on disk — caller is responsible for the unlink
+    assert file_path.exists()
+
+    # Simulate caller doing filesystem cleanup
+    instance_dir = file_path.parent
+    await asyncio.to_thread(_try_unlink, file_path)
+    await asyncio.to_thread(_try_rmdir, instance_dir)
+    await asyncio.to_thread(_try_rmdir, instance_dir.parent)
+    await asyncio.to_thread(_try_rmdir, instance_dir.parent.parent)
+
     assert not file_path.exists()
 
 
@@ -229,10 +243,11 @@ async def test_upsert_atomicity_store_failure_leaves_no_orphan(
     series_uid = "1.2.3.4"
     sop_uid = "1.2.3.4.5"
 
-    # Create initial instance
+    # Create initial instance and commit so it is visible across the session
     await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
+    await db_session.commit()
 
     # Confirm the instance exists
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -246,9 +261,12 @@ async def test_upsert_atomicity_store_failure_leaves_no_orphan(
         "metadata": {},
     }
 
-    # Attempt upsert with bad data — should raise and roll back
+    # Attempt upsert with bad data — should raise; caller must roll back
     with pytest.raises(Exception):
         await upsert_instance(db_session, study_uid, series_uid, sop_uid, bad_data, storage_dir)
+
+    # Roll back the failed transaction (simulating what the router's exception handler does)
+    await db_session.rollback()
 
     # After rollback, the original instance must still exist — no orphan deletion
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
