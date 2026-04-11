@@ -81,7 +81,7 @@ app = FastAPI(
         "Provides DICOMweb (STOW-RS, WADO-RS, QIDO-RS) plus Azure-specific APIs "
         "(Change Feed, Extended Query Tags, Operations)."
     ),
-    version="0.3.2",
+    version="0.3.3",
     lifespan=lifespan,
 )
 

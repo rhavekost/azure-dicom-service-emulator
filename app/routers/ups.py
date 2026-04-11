@@ -114,9 +114,14 @@ async def create_or_update_workitem(
             )
         return await _do_create_workitem(workitem_uid=workitem_uid, payload=payload, db=db)
 
-    # Update path — workitem exists; requires transaction-uid to distinguish
-    # from a duplicate create attempt. No txn_uid = duplicate POST → 409.
-    if txn_uid is None:
+    # Update path — workitem exists.
+    # Distinguish a duplicate create attempt from a legitimate SCHEDULED update:
+    # - Payload includes ProcedureStepState (00741000) without a txn_uid → this is a
+    #   re-POST of the create body onto an existing workitem → 409 Conflict.
+    # - No ProcedureStepState in payload → legitimate attribute update; SCHEDULED
+    #   workitems need no transaction-uid. IN PROGRESS requires one — the state
+    #   machine validates that and raises 409 if missing or mismatched.
+    if txn_uid is None and "00741000" in payload:
         raise HTTPException(status_code=409, detail=f"Workitem {workitem_uid} already exists")
     return await _do_update_workitem(
         workitem_uid=workitem_uid,

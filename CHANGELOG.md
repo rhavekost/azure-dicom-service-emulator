@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-04-11
+
+### Fixed
+- UPS-RS `POST /v2/workitems/{uid}` on an existing SCHEDULED workitem without a
+  transaction-uid now correctly updates the workitem (200) instead of returning 409.
+  The 409 guard introduced in 0.3.2 was too broad — it should only fire when the
+  payload includes `ProcedureStepState` (00741000), which signals a duplicate create
+  attempt rather than a legitimate attribute update.
+
 ## [0.3.2] - 2026-04-11
 
 ### Fixed
