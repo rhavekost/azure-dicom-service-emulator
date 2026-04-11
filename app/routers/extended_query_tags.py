@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,10 +61,27 @@ async def list_extended_query_tags(
     response_model=AddExtendedQueryTagsOperationResponse,
 )
 async def add_extended_query_tags(
-    request: ExtendedQueryTagsRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Add new extended query tags."""
+    """Add new extended query tags.
+
+    Accepts both a bare JSON array (Azure API standard) and a wrapped object
+    ``{"tags": [...]}`` for backwards compatibility.
+    """
+    raw = await request.json()
+
+    # Normalise: bare list OR {"tags": [...]}
+    if isinstance(raw, list):
+        tag_inputs = [ExtendedQueryTagInput(**item) for item in raw]
+    elif isinstance(raw, dict) and "tags" in raw:
+        tag_inputs = [ExtendedQueryTagInput(**item) for item in raw["tags"]]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Request body must be a JSON array of tag objects",
+        )
+
     operation_id = uuid.uuid4()
 
     # Create operation
@@ -77,7 +94,7 @@ async def add_extended_query_tags(
     db.add(operation)
 
     # Create tags
-    for tag_input in request.tags:
+    for tag_input in tag_inputs:
         # Check if tag already exists
         existing = await db.execute(
             select(ExtendedQueryTag).where(ExtendedQueryTag.path == tag_input.path)

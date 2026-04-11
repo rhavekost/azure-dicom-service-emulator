@@ -521,9 +521,16 @@ async def stow_rs(
         effective_study_uid, result.stored, result.warnings, result.failures
     )
 
-    # Azure v2: 200 if all succeed, 202 if warnings or partial success, 409 if all fail
-    if result.failures and not result.stored:
-        # All instances failed (duplicates, validation errors, exceptions)
+    # Azure v2: 200 if all succeed, 202 if warnings or partial success, 409 if all fail.
+    # 45070 (0xB00E) is a DICOM *warning* code — an all-duplicate POST must return 202,
+    # not 409. Only hard failures (0xC-range codes) should drive a 409.
+    hard_failures = [
+        f
+        for f in result.failures
+        if f.get("00081197", {}).get("Value", [None])[0] != FAILURE_REASON_INSTANCE_ALREADY_EXISTS
+    ]
+    if hard_failures and not result.stored:
+        # All instances failed for non-warning reasons
         status_code = 409
     elif result.has_warnings or result.warnings or result.failures:
         # Return 202 for warnings OR partial success (some stored, some failed)

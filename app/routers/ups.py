@@ -1,6 +1,7 @@
 """UPS-RS (Unified Procedure Step) router."""
 
 import logging
+import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -41,10 +42,19 @@ async def create_workitem(
 
     workitem_uid = None
 
-    # Extract workitem UID from query string (format: /v2/workitems?{uid})
+    # Extract workitem UID from query string.
+    # Azure API standard: /v2/workitems?{uid}  (bare UID as the query key)
+    # Also accept named form: /v2/workitems?workitem={uid}  (used by many HTTP clients)
     query_string = request.url.query
     if query_string:
-        workitem_uid = query_string
+        if "=" in query_string:
+            parsed_qs = urllib.parse.parse_qs(query_string)
+            workitem_uid = (
+                parsed_qs.get("workitem", [None])[0] or parsed_qs.get("workitemUID", [None])[0]
+            )
+        else:
+            # Bare UID: /v2/workitems?1.2.3.uid
+            workitem_uid = urllib.parse.unquote(query_string)
 
     # If still not found, try to get from dataset
     if not workitem_uid:
