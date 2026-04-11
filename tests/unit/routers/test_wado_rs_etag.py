@@ -55,6 +55,7 @@ class TestStudyMetadataETag:
         )
         assert second.status_code == 304
         assert second.content == b""
+        assert "etag" in second.headers
 
     def test_if_none_match_mismatch_returns_200(self, client, stored_instance):
         response = client.get(
@@ -69,6 +70,7 @@ class TestStudyMetadataETag:
             headers={"If-None-Match": "*"},
         )
         assert response.status_code == 304
+        assert "etag" in response.headers
 
 
 # ── Series-level metadata ────────────────────────────────────────────
@@ -95,6 +97,7 @@ class TestSeriesMetadataETag:
         )
         assert second.status_code == 304
         assert second.content == b""
+        assert "etag" in second.headers
 
     def test_if_none_match_mismatch_returns_200(self, client, stored_instance):
         response = client.get(
@@ -109,6 +112,7 @@ class TestSeriesMetadataETag:
             headers={"If-None-Match": "*"},
         )
         assert response.status_code == 304
+        assert "etag" in response.headers
 
 
 # ── Instance-level metadata ──────────────────────────────────────────
@@ -135,6 +139,7 @@ class TestInstanceMetadataETag:
         )
         assert second.status_code == 304
         assert second.content == b""
+        assert "etag" in second.headers
 
     def test_if_none_match_mismatch_returns_200(self, client, stored_instance):
         response = client.get(
@@ -149,6 +154,7 @@ class TestInstanceMetadataETag:
             headers={"If-None-Match": "*"},
         )
         assert response.status_code == 304
+        assert "etag" in response.headers
 
 
 # ── ETag stability ────────────────────────────────────────────────────
