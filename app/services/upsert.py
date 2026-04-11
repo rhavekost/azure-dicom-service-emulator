@@ -4,11 +4,13 @@ Upsert service for PUT STOW-RS operations (Phase 3, Task 2).
 Implements create-or-replace logic for DICOM instances.
 """
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import aiofiles
 from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,23 +85,29 @@ async def delete_instance(
 
     # Delete file from filesystem
     file_path = Path(instance.file_path)
-    if file_path.exists():
-        file_path.unlink()
+    if await asyncio.to_thread(file_path.exists):
+        await asyncio.to_thread(file_path.unlink)
 
         # Clean up parent directory if empty (instance level)
         instance_dir = file_path.parent
-        if instance_dir.exists() and not any(instance_dir.iterdir()):
-            instance_dir.rmdir()
+        if await asyncio.to_thread(instance_dir.exists) and not any(
+            await asyncio.to_thread(list, instance_dir.iterdir())
+        ):
+            await asyncio.to_thread(instance_dir.rmdir)
 
             # Clean up series directory if empty
             series_dir = instance_dir.parent
-            if series_dir.exists() and not any(series_dir.iterdir()):
-                series_dir.rmdir()
+            if await asyncio.to_thread(series_dir.exists) and not any(
+                await asyncio.to_thread(list, series_dir.iterdir())
+            ):
+                await asyncio.to_thread(series_dir.rmdir)
 
                 # Clean up study directory if empty
                 study_dir = series_dir.parent
-                if study_dir.exists() and not any(study_dir.iterdir()):
-                    study_dir.rmdir()
+                if await asyncio.to_thread(study_dir.exists) and not any(
+                    await asyncio.to_thread(list, study_dir.iterdir())
+                ):
+                    await asyncio.to_thread(study_dir.rmdir)
 
     # Delete from database
     delete_stmt = sql_delete(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -135,12 +143,13 @@ async def store_instance(
     """
     # Create directory structure: storage_dir/study/series/instance/
     instance_dir = Path(storage_dir) / study_uid / series_uid / sop_uid
-    instance_dir.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(instance_dir.mkdir, parents=True, exist_ok=True)
 
     # Write DICOM file
     file_name = "instance.dcm"  # Consistent with dicom_engine and frame_cache
     file_path = instance_dir / file_name
-    file_path.write_bytes(dcm_data["file_data"])
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(dcm_data["file_data"])
 
     # Extract metadata
     metadata = dcm_data.get("metadata", {})

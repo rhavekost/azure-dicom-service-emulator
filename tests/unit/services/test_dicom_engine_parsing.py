@@ -463,7 +463,7 @@ def test_dataset_to_dicom_json_binary_inline():
 # ── Filesystem Operations (store/read/delete) ─────────────────────
 
 
-def test_store_instance_writes_file(tmp_path, monkeypatch):
+async def test_store_instance_writes_file(tmp_path, monkeypatch):
     """store_instance writes DICOM bytes to the correct filesystem path."""
     import app.services.dicom_engine as dicom_engine
 
@@ -472,7 +472,7 @@ def test_store_instance_writes_file(tmp_path, monkeypatch):
     ct_bytes = DicomFactory.create_ct_image(patient_id="STORE-001")
     ds = parse_dicom(ct_bytes)
 
-    file_path = store_instance(ct_bytes, ds)
+    file_path = await store_instance(ct_bytes, ds)
 
     assert os.path.exists(file_path)
     assert file_path.endswith(".dcm")
@@ -481,37 +481,37 @@ def test_store_instance_writes_file(tmp_path, monkeypatch):
         assert f.read() == ct_bytes
 
 
-def test_read_instance_returns_bytes(tmp_path):
+async def test_read_instance_returns_bytes(tmp_path):
     """read_instance reads stored DICOM bytes from disk."""
     test_file = tmp_path / "test.dcm"
     test_data = b"DICOM test data bytes"
     test_file.write_bytes(test_data)
 
-    result = read_instance(str(test_file))
+    result = await read_instance(str(test_file))
 
     assert result == test_data
 
 
-def test_delete_instance_file_removes_file(tmp_path):
+async def test_delete_instance_file_removes_file(tmp_path):
     """delete_instance_file removes the DICOM file from disk."""
     test_file = tmp_path / "to_delete.dcm"
     test_file.write_bytes(b"temporary DICOM data")
     assert test_file.exists()
 
-    delete_instance_file(str(test_file))
+    await delete_instance_file(str(test_file))
 
     assert not test_file.exists()
 
 
-def test_delete_instance_file_nonexistent_is_noop(tmp_path):
+async def test_delete_instance_file_nonexistent_is_noop(tmp_path):
     """delete_instance_file silently does nothing for a nonexistent file."""
     nonexistent = str(tmp_path / "does_not_exist.dcm")
 
     # Should not raise
-    delete_instance_file(nonexistent)
+    await delete_instance_file(nonexistent)
 
 
-def test_store_instance_rejects_traversal_uid(tmp_path, monkeypatch):
+async def test_store_instance_rejects_traversal_uid(tmp_path, monkeypatch):
     """store_instance raises ValueError when UID contains path traversal."""
     import app.services.dicom_engine as dicom_engine
 
@@ -523,7 +523,7 @@ def test_store_instance_rejects_traversal_uid(tmp_path, monkeypatch):
     ds.SOPInstanceUID = generate_uid()
 
     with pytest.raises(ValueError, match="Invalid DICOM UID format"):
-        store_instance(b"data", ds)
+        await store_instance(b"data", ds)
 
 
 # ── Multi-value numeric JSON conversion ───────────────────────────

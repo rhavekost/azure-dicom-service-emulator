@@ -5,11 +5,13 @@ Uses pydicom to handle DICOM file parsing and converts to the DICOM JSON
 model (PS3.18 F.2) used by DICOMweb APIs.
 """
 
+import asyncio
 import base64
 import os
 import re
 from typing import Any
 
+import aiofiles
 import pydicom
 from pydicom.dataset import Dataset
 
@@ -175,7 +177,7 @@ def extract_searchable_metadata(ds: Dataset) -> dict[str, Any]:
     return meta
 
 
-def store_instance(data: bytes, ds: Dataset) -> str:
+async def store_instance(data: bytes, ds: Dataset) -> str:
     """
     Store a DICOM instance to the filesystem.
     Returns the file path.
@@ -193,26 +195,27 @@ def store_instance(data: bytes, ds: Dataset) -> str:
 
     # Create instance directory: {storage}/{study}/{series}/{sop}/
     instance_dir = os.path.join(STORAGE_DIR, study_uid, series_uid, sop_uid)
-    os.makedirs(instance_dir, exist_ok=True)
+    # os.makedirs is a fast metadata-only operation; use asyncio.to_thread for consistency
+    await asyncio.to_thread(os.makedirs, instance_dir, exist_ok=True)
 
     # Store as instance.dcm (consistent with frame_cache expectations)
     file_path = os.path.join(instance_dir, "instance.dcm")
-    with open(file_path, "wb") as f:
-        f.write(data)
+    async with aiofiles.open(file_path, "wb") as f:
+        await f.write(data)
 
     return file_path
 
 
-def read_instance(file_path: str) -> bytes:
+async def read_instance(file_path: str) -> bytes:
     """Read a stored DICOM instance from disk."""
-    with open(file_path, "rb") as f:
-        return f.read()
+    async with aiofiles.open(file_path, "rb") as f:
+        return await f.read()
 
 
-def delete_instance_file(file_path: str):
+async def delete_instance_file(file_path: str) -> None:
     """Remove a DICOM instance file from disk."""
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    if await asyncio.to_thread(os.path.exists, file_path):
+        await asyncio.to_thread(os.remove, file_path)
 
 
 def validate_required_attributes(ds: Dataset) -> list[str]:

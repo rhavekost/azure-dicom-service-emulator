@@ -357,7 +357,7 @@ async def stow_rs(
                 continue  # Skip storing this duplicate
 
             # Store file to disk
-            file_path = store_instance(part.data, ds)
+            file_path = await store_instance(part.data, ds)
             file_size = len(part.data)
 
             # Extract metadata
@@ -1732,7 +1732,7 @@ async def _retrieve_instances(
     boundary = f"boundary-{uuid.uuid4().hex[:16]}"
     parts = []
     for inst in instances:
-        data = read_instance(inst.file_path)
+        data = await read_instance(inst.file_path)
         parts.append(("application/dicom", data))
 
     body = build_multipart_response(parts, boundary)
@@ -1796,7 +1796,7 @@ async def _delete_instances(
         await _mark_previous_feed_entries(db, inst.sop_instance_uid)
 
         # Delete file from disk
-        delete_instance_file(inst.file_path)
+        await delete_instance_file(inst.file_path)
 
         # Delete from DB
         await db.delete(inst)
