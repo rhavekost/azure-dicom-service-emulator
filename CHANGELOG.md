@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.3] - 2026-04-11
+## [0.3.3] - 2026-04-12
 
 ### Fixed
 - UPS-RS `POST /v2/workitems/{uid}` on an existing SCHEDULED workitem without a
@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The 409 guard introduced in 0.3.2 was too broad — it should only fire when the
   payload includes `ProcedureStepState` (00741000), which signals a duplicate create
   attempt rather than a legitimate attribute update.
+- QIDO-RS query parameters with an empty value (e.g. `?PatientName=`) are now skipped
+  instead of generating a `column = ''` filter condition. Per DICOM PS3.18, bare
+  parameter names without a value are `includefield` hints, not search filters; the
+  previous behavior caused legitimate matches to be excluded from results.
 
 ## [0.3.2] - 2026-04-11
 
