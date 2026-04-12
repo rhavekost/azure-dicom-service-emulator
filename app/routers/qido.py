@@ -138,6 +138,10 @@ def _parse_qido_params(params, fuzzymatching: bool = False) -> list:
     """
     filters = []
     for key, value in params.items():
+        # Per DICOM PS3.18, parameters with no value are includefield hints,
+        # not filters — skip them to avoid matching only rows with empty columns.
+        if not value:
+            continue
         if key in ("limit", "offset", "fuzzymatching", "includefield"):
             continue
 
