@@ -11,6 +11,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import and_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -127,7 +128,11 @@ async def _delete_instances(
         # Delete from DB
         await db.delete(inst)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     # Publish DicomImageDeleted events (best-effort, after commit)
     service_url = str(request.base_url).rstrip("/")

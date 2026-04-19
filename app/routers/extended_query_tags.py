@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -114,7 +115,11 @@ async def add_extended_query_tags(
         )
         db.add(tag)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     # Return operation status (Azure v2 returns 202 with operation)
     return {

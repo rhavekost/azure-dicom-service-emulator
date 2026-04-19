@@ -18,6 +18,7 @@ from typing import Any, Optional, cast
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -434,6 +435,7 @@ async def _process_stow_instances(
                 result.instances_to_publish.append((stored_instance, feed_entry))
 
         except Exception as e:
+            await db.rollback()
             result.failures.append(
                 {
                     "00081197": {"vr": "US", "Value": [0xC000]},
@@ -515,7 +517,11 @@ async def stow_rs(
         parts, db, study_instance_uid=study_instance_uid, upsert=False
     )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     await _publish_stow_events(result.instances_to_publish, request)
 
@@ -595,7 +601,11 @@ async def stow_rs_put(
             db.add(study)
         study.expires_at = expires_at
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     await _publish_stow_events(result.instances_to_publish, request)
 
