@@ -436,6 +436,14 @@ async def _process_stow_instances(
 
         except Exception as e:
             await db.rollback()
+            # Rollback discarded all pending ORM adds for prior successful
+            # parts in this batch. Clear the Python-side mirror lists so the
+            # STOW response's ReferencedSOPSequence and the event publisher
+            # don't lie about instances that were never actually persisted.
+            # Warnings/failures from prior iterations reached ``continue`` without
+            # touching the session, so those accumulators stay accurate.
+            result.stored.clear()
+            result.instances_to_publish.clear()
             result.failures.append(
                 {
                     "00081197": {"vr": "US", "Value": [0xC000]},

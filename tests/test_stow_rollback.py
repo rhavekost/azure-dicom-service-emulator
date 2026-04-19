@@ -2,8 +2,7 @@
 
 Covers the fix for the session pool-poisoning bug where an unhandled
 SQLAlchemyError on ``commit()`` would leave the session dirty, poisoning
-subsequent pooled connections. Plan:
-/Users/rhavekost/.claude/plans/i-got-the-flow-partitioned-muffin.md
+subsequent pooled connections. See PR #15 for the design discussion.
 
 What this suite proves:
     * Scenarios A and B spy on ``AsyncSession.rollback`` to assert that
@@ -46,8 +45,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.database as database_module
 import app.routers.stow as stow_module
-from app.database import engine as production_engine
 from tests.fixtures.factories import DicomFactory
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -349,19 +348,172 @@ def test_stow_recovers_after_in_loop_instance_failure(
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  Scenario C — defensive: production engine has pool_pre_ping=True
+#  Scenario C — defensive: production engine factory passes pool_pre_ping
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def test_production_engine_pool_pre_ping_enabled() -> None:
-    """Production engine must be configured with ``pool_pre_ping=True``.
+def test_production_engine_pool_pre_ping_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production ``_make_engine`` must pass ``pool_pre_ping=True``.
 
-    Belt-and-suspenders guard against a future regression that silently
-    drops the pre-ping kwarg. ``engine.pool._pre_ping`` is the
-    SQLAlchemy-internal storage of the constructor flag and is stable
-    across the SQLAlchemy 2.x line used by this project.
+    Asserts the constructor contract rather than reaching into
+    SQLAlchemy's private ``engine.pool._pre_ping`` attribute, which is
+    an internal implementation detail that may change on major upgrades.
     """
-    assert getattr(production_engine.pool, "_pre_ping", False) is True, (
-        "app.database.engine must be created with pool_pre_ping=True to "
-        "validate pooled connections on checkout"
+    captured: dict[str, object] = {}
+
+    class _StubEngine:
+        """Minimal stand-in so we don't actually open a connection pool."""
+
+    def _capture(*args: object, **kwargs: object) -> _StubEngine:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return _StubEngine()
+
+    monkeypatch.setattr(database_module, "create_async_engine", _capture)
+
+    result = database_module._make_engine()
+
+    assert isinstance(result, _StubEngine), "factory must return the patched engine"
+    kwargs = captured.get("kwargs", {})
+    assert isinstance(kwargs, dict)
+    assert kwargs.get("pool_pre_ping") is True, (
+        "app.database._make_engine() must pass pool_pre_ping=True to "
+        "create_async_engine so pooled connections are validated on checkout"
     )
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Scenario D — in-loop rollback must not report prior parts as stored
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+def test_stow_response_excludes_rolled_back_siblings_on_in_loop_failure(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In-loop rollback must not leave stale entries in response/events.
+
+    When a later part in a batch triggers the in-loop ``except`` branch
+    (``await db.rollback()``), the session's pending ORM adds for earlier
+    successful parts are discarded. The Python-side mirror lists
+    (``result.stored`` and ``result.instances_to_publish``) must also be
+    cleared, otherwise:
+
+    * The STOW response's ``ReferencedSOPSequence`` (``00081199``) reports
+      prior parts as stored when they were actually rolled back.
+    * ``_publish_stow_events`` emits ``DicomImageCreated`` events for
+      instances that never got persisted.
+
+    Steps:
+        1. Two-part multipart STOW: part 1 valid, part 2 monkeypatched
+           to raise inside ``store_instance`` (same pattern as Scenario B).
+        2. Send the batch.
+        3. Assert ``ReferencedSOPSequence`` is absent OR empty — part 1
+           must NOT be reported as stored.
+        4. Assert ``FailedSOPSequence`` records the failure for part 2.
+        5. Immediately QIDO for part 1's SOP UID and confirm it is not
+           persisted (rollback wiped it from the DB).
+        6. Send a fresh valid STOW on the same client to confirm the
+           session is still healthy.
+    """
+    good_sop = "1.2.826.0.1.3680043.8.498.99990005.1.1"
+    good_study_uid = "1.2.826.0.1.3680043.8.498.99990005"
+    bad_sop = "1.2.826.0.1.3680043.8.498.99990005.2.1"
+
+    dcm_good = DicomFactory.create_ct_image(
+        patient_id="ROLLBACK-D-GOOD",
+        study_uid=good_study_uid,
+        series_uid="1.2.826.0.1.3680043.8.498.99990005.1",
+        sop_uid=good_sop,
+        with_pixel_data=False,
+    )
+    dcm_bad = DicomFactory.create_ct_image(
+        patient_id="ROLLBACK-D-BAD",
+        study_uid=good_study_uid,
+        series_uid="1.2.826.0.1.3680043.8.498.99990005.2",
+        sop_uid=bad_sop,
+        with_pixel_data=False,
+    )
+
+    original_store_instance = stow_module.store_instance
+    raised = {"count": 0}
+
+    async def flaky_store_instance(file_data: bytes, ds) -> str:
+        if str(ds.SOPInstanceUID) == bad_sop:
+            raised["count"] += 1
+            raise RuntimeError("simulated store_instance failure")
+        return await original_store_instance(file_data, ds)
+
+    monkeypatch.setattr(stow_module, "store_instance", flaky_store_instance)
+
+    body, content_type = _build_multipart([dcm_good, dcm_bad])
+    response = client.post(
+        "/v2/studies",
+        content=body,
+        headers={"Content-Type": content_type},
+    )
+    assert raised["count"] == 1, "flaky store_instance was never invoked"
+
+    # Route should not 500 — in-loop rollback catches, records the failure,
+    # and returns a conventional STOW-RS envelope.
+    assert response.status_code in (200, 202, 409), (
+        f"unexpected status on in-loop failure: {response.status_code}: " f"{response.text[:400]}"
+    )
+    payload = response.json()
+
+    # Regression assertion #1: ReferencedSOPSequence must NOT claim part 1
+    # as stored. Without the `result.stored.clear()` in the except branch,
+    # part 1 would appear here even though the rollback wiped it from the
+    # DB, causing the response to lie to the client.
+    stored_seq = payload.get("00081199", {}).get("Value", [])
+    assert stored_seq == [] or all(
+        entry.get("00081155", {}).get("Value", [None])[0] != good_sop for entry in stored_seq
+    ), (
+        "ReferencedSOPSequence must not list part 1's SOP UID after the "
+        "sibling rollback discarded it from the session. "
+        f"stored_seq={stored_seq!r}"
+    )
+
+    # Regression assertion #2: FailedSOPSequence records the 0xC000 failure
+    # from the in-loop except branch.
+    assert "00081198" in payload, f"expected FailedSOPSequence in response, got: {payload!r}"
+    failed = payload["00081198"]["Value"]
+    assert any(
+        f.get("00081197", {}).get("Value", [None])[0] == 0xC000 for f in failed
+    ), f"expected an in-loop (0xC000) failure entry, got: {failed!r}"
+
+    # Regression assertion #3: QIDO confirms part 1 is NOT persisted.
+    # If instances_to_publish had leaked, the event publisher would have
+    # fired, but the DB itself must remain clean.
+    qido = client.get(
+        "/v2/studies",
+        params={"StudyInstanceUID": good_study_uid},
+        headers={"Accept": "application/dicom+json"},
+    )
+    # QIDO returns 200 with empty list when nothing matches.
+    assert qido.status_code in (200, 204)
+    if qido.status_code == 200 and qido.text:
+        studies = qido.json()
+        assert studies == [] or all(
+            s.get("0020000D", {}).get("Value", [None])[0] != good_study_uid for s in studies
+        ), "part 1's study must not be persisted after in-loop rollback. " f"studies={studies!r}"
+
+    # Restore before the recovery request to keep intent explicit.
+    monkeypatch.setattr(stow_module, "store_instance", original_store_instance)
+
+    # Session-health check: fresh valid STOW on the same client must succeed.
+    recovery_study_uid = "1.2.826.0.1.3680043.8.498.99990006"
+    recovery_sop_uid = "1.2.826.0.1.3680043.8.498.99990006.1.1"
+    dcm_recovery = DicomFactory.create_ct_image(
+        patient_id="ROLLBACK-D-OK",
+        study_uid=recovery_study_uid,
+        series_uid="1.2.826.0.1.3680043.8.498.99990006.1",
+        sop_uid=recovery_sop_uid,
+        with_pixel_data=False,
+    )
+    response_ok = _post_stow(client, dcm_recovery)
+    assert response_ok.status_code == 200, (
+        f"recovery STOW should succeed, got {response_ok.status_code}: " f"{response_ok.text[:400]}"
+    )
+    stored = response_ok.json()["00081199"]["Value"]
+    assert len(stored) == 1
+    assert stored[0]["00081155"]["Value"][0] == recovery_sop_uid

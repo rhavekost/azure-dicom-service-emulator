@@ -5,7 +5,19 @@ from sqlalchemy.orm import declarative_base
 
 from app.config import DATABASE_URL
 
-engine = create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+
+def _make_engine():
+    """Build the production async engine.
+
+    Wrapped in a tiny factory so tests can assert the constructor contract
+    (e.g., ``pool_pre_ping=True``) by monkeypatching ``create_async_engine``
+    in this module rather than reaching into SQLAlchemy-internal pool
+    attributes.
+    """
+    return create_async_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+
+
+engine = _make_engine()
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
