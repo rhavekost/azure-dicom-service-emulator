@@ -5,36 +5,48 @@ SQLAlchemyError on ``commit()`` would leave the session dirty, poisoning
 subsequent pooled connections. Plan:
 /Users/rhavekost/.claude/plans/i-got-the-flow-partitioned-muffin.md
 
-What this suite proves (the plan's core requirement):
-    After a failing STOW request, the NEXT valid STOW request on the same
-    test client/session succeeds AND the instance is actually persisted
-    (QIDO-able). Asserting only "rollback was called" would miss the point.
+What this suite proves:
+    * Scenarios A and B spy on ``AsyncSession.rollback`` to assert that
+      the production code's **explicit** ``rollback()`` call is invoked
+      on the failure path (not merely the implicit rollback inside
+      ``AsyncSession.__aexit__``'s ``close()``). This closes the main
+      regression gap on SQLite: without the production fix, these
+      assertions fail even though the end-to-end "recovery request
+      succeeds" check still passes (because aiosqlite has no real pool
+      and ``async with`` cleanup rolls back on its own).
+    * Scenarios A and B also verify the follow-up request succeeds and
+      the instance is persisted (QIDO round-trip).
+    * Scenario C asserts the production ``engine`` is configured with
+      ``pool_pre_ping=True``.
 
 Layers exercised:
     * Scenario A — commit-time ``SQLAlchemyError`` inside ``stow_rs``:
-      exercises the local try/except/rollback guard added around the
-      ``await db.commit()`` call in ``app/routers/stow.py``.
+      exercises the local try/except/rollback guard around the
+      ``await db.commit()`` call in ``app/routers/stow.py`` AND the
+      outer ``get_db`` rollback-on-exception wrapper.
     * Scenario B — in-loop exception inside ``_process_stow_instances``:
-      exercises the in-loop ``await db.rollback()`` added to the per-part
+      exercises the in-loop ``await db.rollback()`` in the per-part
       exception handler.
     * Scenario C — defensive check that production ``engine`` is
       configured with ``pool_pre_ping=True``.
 
-Note on the test harness:
-    ``tests/conftest.py`` uses SQLite via aiosqlite, which has no real
-    connection pool — this suite cannot reproduce actual pool poisoning.
-    What it CAN do is drive the production rollback code paths on the
-    route and session, and then verify a second request on the same
-    ``TestClient`` still works end-to-end.
+Known limitation:
+    End-to-end pool-poisoning verification requires a Postgres
+    integration variant (follow-up, not on this branch). SQLite via
+    aiosqlite has no real connection pool, so even without the
+    production fix a fresh session is handed out each request — the
+    spy assertions above are how we prove the fix stays in place.
 """
 
 from __future__ import annotations
 
 import pytest
+import sqlalchemy.ext.asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.routers.stow as stow_module
 from app.database import engine as production_engine
 from tests.fixtures.factories import DicomFactory
 
@@ -88,15 +100,21 @@ def test_stow_recovers_after_commit_sqlalchemy_error(
     outer rollback-on-exception wrapper.
 
     Steps:
-        1. Monkeypatch ``AsyncSession.commit`` so the next call raises
+        1. Install a spy on ``AsyncSession.rollback`` to count EXPLICIT
+           rollback calls (the implicit rollback inside ``close()``'s
+           ``__aexit__`` path does not go through this method).
+        2. Monkeypatch ``AsyncSession.commit`` so the next call raises
            ``SQLAlchemyError`` exactly ONCE, then self-restores.
-        2. Send a valid STOW — expect the SQLAlchemyError to surface.
+        3. Send a valid STOW — expect the SQLAlchemyError to surface.
            Starlette's ``TestClient`` by default re-raises unhandled
            server exceptions (see ``raise_server_exceptions=True``);
            against a real HTTP stack this is a 500. Either way, the
            guard must have rolled back before the error escaped.
-        3. Send a second valid STOW (no monkeypatch active). Expect 200
-           and the instance persisted (QIDO-able).
+        4. Assert the spy recorded at least one explicit rollback. This
+           is the regression test: without Task 1's ``get_db`` rollback
+           AND Task 2's ``stow_rs`` local rollback, the count is 0.
+        5. Reset the spy counter, then send a second valid STOW (no
+           monkeypatch active). Expect 200 and the instance persisted.
     """
     failing_study_uid = "1.2.826.0.1.3680043.8.498.99990001"
     failing_sop_uid = "1.2.826.0.1.3680043.8.498.99990001.1.1"
@@ -117,6 +135,18 @@ def test_stow_recovers_after_commit_sqlalchemy_error(
         sop_uid=recovery_sop_uid,
         with_pixel_data=False,
     )
+
+    # Spy on AsyncSession.rollback to count EXPLICIT calls from
+    # production code. The implicit rollback inside __aexit__ → close()
+    # does not go through this method, so we only see the real fix.
+    rollback_calls: list[None] = []
+    original_rollback = sqlalchemy.ext.asyncio.AsyncSession.rollback
+
+    async def spy_rollback(self: AsyncSession) -> None:
+        rollback_calls.append(None)
+        await original_rollback(self)
+
+    monkeypatch.setattr(sqlalchemy.ext.asyncio.AsyncSession, "rollback", spy_rollback)
 
     # One-shot commit failure. Use a mutable cell so the patched coroutine
     # can self-uninstall deterministically — no sleeps, no races.
@@ -141,6 +171,18 @@ def test_stow_recovers_after_commit_sqlalchemy_error(
     with pytest.raises(SQLAlchemyError, match="simulated commit failure"):
         _post_stow(client, dcm_failing)
     assert fired["done"], "monkeypatched commit was never invoked"
+
+    # Regression assertion: the production code must have explicitly
+    # invoked session.rollback() on the failure path. Without Task 1's
+    # get_db rollback AND Task 2's stow_rs local rollback, this list is
+    # empty (implicit rollback inside close() does not pass through).
+    assert rollback_calls, (
+        "expected an explicit session.rollback() call from production code "
+        "on the commit-time failure path"
+    )
+
+    # Reset so we only count rollbacks from the failing path above.
+    rollback_calls.clear()
 
     # Recovery request on the SAME TestClient. Load-bearing assertion: if
     # the session or underlying connection were poisoned, this would also
@@ -212,7 +254,17 @@ def test_stow_recovers_after_in_loop_instance_failure(
         with_pixel_data=False,
     )
 
-    import app.routers.stow as stow_module
+    # Spy on AsyncSession.rollback to count EXPLICIT calls scoped to the
+    # in-loop failure path. Without Task 2's ``await db.rollback()`` in
+    # ``_process_stow_instances``, this list stays empty.
+    rollback_calls: list[None] = []
+    original_rollback = sqlalchemy.ext.asyncio.AsyncSession.rollback
+
+    async def spy_rollback(self: AsyncSession) -> None:
+        rollback_calls.append(None)
+        await original_rollback(self)
+
+    monkeypatch.setattr(sqlalchemy.ext.asyncio.AsyncSession, "rollback", spy_rollback)
 
     original_store_instance = stow_module.store_instance
     raised = {"count": 0}
@@ -232,6 +284,19 @@ def test_stow_recovers_after_in_loop_instance_failure(
         headers={"Content-Type": content_type},
     )
     assert raised["count"] == 1, "flaky store_instance was never invoked"
+
+    # Regression assertion: the in-loop exception branch must have
+    # explicitly rolled back the session. Without Task 2's
+    # ``await db.rollback()`` in ``_process_stow_instances``, this list
+    # is empty.
+    assert rollback_calls, (
+        "expected an explicit session.rollback() call from production code "
+        "on the in-loop failure path"
+    )
+
+    # Reset so any rollbacks during the recovery request don't mask a
+    # regression on the failing path.
+    rollback_calls.clear()
 
     # The route must NOT 500 — _process_stow_instances caught, rolled
     # back, and recorded a failure entry. Status may be 200, 202, or 409
@@ -268,6 +333,9 @@ def test_stow_recovers_after_in_loop_instance_failure(
     assert response_ok.status_code == 200, (
         f"recovery STOW should succeed, got {response_ok.status_code}: " f"{response_ok.text[:400]}"
     )
+    stored = response_ok.json()["00081199"]["Value"]
+    assert len(stored) == 1
+    assert stored[0]["00081155"]["Value"][0] == recovery_sop_uid
 
     qido = client.get(
         "/v2/studies",
