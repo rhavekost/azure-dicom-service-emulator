@@ -6,7 +6,7 @@ import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -274,7 +274,11 @@ async def _do_update_workitem(
     workitem.patient_name = patient_name
     workitem.patient_id = patient_id
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     return Response(status_code=200)
 
@@ -458,7 +462,11 @@ async def change_workitem_state(
 
     workitem.dicom_dataset = updated_dataset
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     return Response(status_code=200)
 
@@ -501,7 +509,11 @@ async def request_cancellation(
     updated_dataset["00741000"] = {"vr": "CS", "Value": ["CANCELED"]}
     workitem.dicom_dataset = updated_dataset
 
-    await db.commit()
+    try:
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
 
     return Response(status_code=202)
 
