@@ -47,10 +47,15 @@ def client(tmp_path, monkeypatch, test_engine_and_session):
     """Create a TestClient with in-memory test database."""
     test_engine, TestSessionLocal = test_engine_and_session
 
-    # Override get_db dependency
+    # Override get_db dependency — mirrors production rollback-on-exception
+    # behavior in app.database.get_db so tests exercise the same failure path.
     async def override_get_db():
         async with TestSessionLocal() as session:
-            yield session
+            try:
+                yield session
+            except BaseException:
+                await session.rollback()
+                raise
 
     # Create a lifespan context for the test app
     @asynccontextmanager
