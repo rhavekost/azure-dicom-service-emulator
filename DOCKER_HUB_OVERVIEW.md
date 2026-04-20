@@ -102,7 +102,7 @@ docker compose -f docker-compose.full.yml up -d
 | Tag | Description |
 |-----|-------------|
 | `latest` | Latest stable release |
-| `v0.3.3`, `v0.3.2`, `v0.3.1`, `v0.3.0`, `v0.2.0`, … | Pinned semantic versions (recommended) |
+| `v0.3.4`, `v0.3.3`, `v0.3.2`, `v0.3.1`, `v0.3.0`, `v0.2.0`, … | Pinned semantic versions (recommended) |
 
 Multi-arch: **linux/amd64** and **linux/arm64** (M1/M2/M3 Mac native).
 
