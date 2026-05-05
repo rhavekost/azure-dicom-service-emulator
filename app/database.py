@@ -60,6 +60,40 @@ def dialect_insert(db: AsyncSession, table: Table):
     return _pg_insert(table)
 
 
+# ── Bulk-INSERT chunking ───────────────────────────────────────────
+# PostgreSQL caps a single statement at 32767 bind parameters (16-bit
+# count in the wire protocol).  asyncpg surfaces overruns as
+# ``InterfaceError: the number of query arguments cannot exceed 32767``.
+# Multi-row INSERT/UPSERT call sites in this codebase (STOW POST/PUT,
+# bulk-update change_feed) fan out one row's worth of bind parameters
+# per ``VALUES (...)`` tuple, so a single statement with too many rows
+# overflows the cap.  The helper below computes a chunk size that keeps
+# every multi-row statement comfortably under the limit regardless of
+# how many columns the row dict has.  ``PG_BIND_HEADROOM`` leaves a
+# margin for any per-statement bind params SQLAlchemy may add (e.g.
+# extra params attached by ``ON CONFLICT`` clauses on some dialects).
+PG_MAX_BIND_PARAMS = 32767
+PG_BIND_HEADROOM = 200
+
+
+def bulk_chunk_size(rows: list) -> int:
+    """Return a chunk size that keeps a multi-row INSERT under PG's bind cap.
+
+    Parameters per chunk = ``len(rows[0]) * chunk_size``.  We compute the
+    largest chunk that fits inside ``PG_MAX_BIND_PARAMS - PG_BIND_HEADROOM``
+    so all bulk-INSERT call sites share the same calculation regardless of
+    row width (e.g. 22 cols for ``dicom_instances``, 7 cols for
+    ``change_feed``).
+
+    Returns ``1`` for an empty input — the caller should already short-
+    circuit on emptiness, but we never want to divide by zero here.
+    """
+    if not rows:
+        return 1
+    cols_per_row = max(1, len(rows[0]))
+    return max(1, (PG_MAX_BIND_PARAMS - PG_BIND_HEADROOM) // cols_per_row)
+
+
 def outbox_session_factory() -> AsyncSession:
     """Return a fresh ``AsyncSession`` for tasks that outlive a request.
 

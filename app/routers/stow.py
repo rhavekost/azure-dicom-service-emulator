@@ -33,7 +33,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import DICOM_PARSE_INFLIGHT
-from app.database import dialect_insert, get_db
+from app.database import (
+    PG_BIND_HEADROOM,
+    PG_MAX_BIND_PARAMS,
+    bulk_chunk_size,
+    dialect_insert,
+    get_db,
+)
 from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy, Operation
 from app.models.events import DicomEvent
 from app.routers._shared import (
@@ -299,9 +305,13 @@ async def bulk_update_studies(
 
             # Bulk INSERT change_feed rows — one per updated instance.  No
             # RETURNING needed here; bulk_update doesn't fan out events.
-            await db.execute(
-                dialect_insert(db, ChangeFeedEntry.__table__).values(change_feed_rows)
-            )
+            # Chunk so wide studies don't trip PG's 32767 bind-param cap.
+            cf_chunk = bulk_chunk_size(change_feed_rows)
+            for cf_start in range(0, len(change_feed_rows), cf_chunk):
+                cf_slice = change_feed_rows[cf_start : cf_start + cf_chunk]
+                await db.execute(
+                    dialect_insert(db, ChangeFeedEntry.__table__).values(cf_slice)
+                )
 
             # Update (or create) the DicomStudy row for this study.  The
             # study-level columns are a much smaller set, so a single ORM
@@ -542,6 +552,11 @@ async def _stage_record(
     # Worker-side parse / required-attribute failure
     if not record.ok:
         if record.required_errors:
+            logger.warning(
+                "STOW part rejected (required attributes missing) sop=%s: %s",
+                record.sop_uid or "<unknown>",
+                record.required_errors,
+            )
             result.failures.append(
                 {
                     "00081150": {"vr": "UI", "Value": [record.sop_class_uid]},
@@ -550,6 +565,10 @@ async def _stage_record(
                 }
             )
         else:
+            logger.warning(
+                "STOW part rejected (parse failed): %s",
+                record.parse_error or "parse failed",
+            )
             result.failures.append(
                 {
                     "00081197": {"vr": "US", "Value": [FAILURE_REASON_UNABLE_TO_PROCESS]},
@@ -573,6 +592,12 @@ async def _stage_record(
 
     # Study-UID-in-URL must match every instance's StudyInstanceUID
     if study_instance_uid and record.study_uid != study_instance_uid:
+        logger.warning(
+            "STOW part rejected (study UID mismatch): URL=%s, instance=%s, sop=%s",
+            study_instance_uid,
+            record.study_uid,
+            record.sop_uid,
+        )
         result.failures.append(
             {
                 "00081150": {"vr": "UI", "Value": [record.sop_class_uid]},
@@ -594,6 +619,12 @@ async def _stage_record(
     except Exception as e:
         # Disk-write failure for this part is partial-success: the batch
         # keeps going, this part lands in FailedSOPSequence with 0xC000.
+        logger.exception(
+            "STOW disk write failed for sop=%s (study=%s): %s",
+            record.sop_uid,
+            record.study_uid,
+            e,
+        )
         result.failures.append(
             {
                 "00081150": {"vr": "UI", "Value": [record.sop_class_uid]},
@@ -671,43 +702,65 @@ async def _bulk_insert_post(staged: list[_StagedRecord], db: AsyncSession) -> se
     learns about it via the absence of the SOP UID from the returned set.
     Returns the set of SOP UIDs that were freshly inserted (winners of
     the dedup race).
+
+    Rows are chunked (see :func:`bulk_chunk_size`) so each statement
+    stays under PostgreSQL's 32767 bind-parameter cap.  All chunks run in
+    the same session/transaction, so a failure in chunk N rolls the whole
+    request back via the caller's ``_process_stow_records`` handler.
     """
     if not staged:
         return set()
 
     now = datetime.now(timezone.utc)
     rows = [_build_dicom_instance_row(s, now=now) for s in staged]
+    chunk_size = bulk_chunk_size(rows)
 
-    insert_stmt = (
-        dialect_insert(db, DicomInstance.__table__)
-        .values(rows)
-        .on_conflict_do_nothing(
-            index_elements=[DicomInstance.__table__.c.sop_instance_uid],
+    inserted: set[str] = set()
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start : start + chunk_size]
+        insert_stmt = (
+            dialect_insert(db, DicomInstance.__table__)
+            .values(chunk)
+            .on_conflict_do_nothing(
+                index_elements=[DicomInstance.__table__.c.sop_instance_uid],
+            )
+            .returning(DicomInstance.__table__.c.sop_instance_uid)
         )
-        .returning(DicomInstance.__table__.c.sop_instance_uid)
-    )
-    inserted_rows = (await db.execute(insert_stmt)).all()
-    return {row[0] for row in inserted_rows}
+        inserted_rows = (await db.execute(insert_stmt)).all()
+        inserted.update(row[0] for row in inserted_rows)
+    return inserted
 
 
 async def _bulk_insert_change_feed(
     db: AsyncSession,
     feed_rows: list[dict[str, Any]],
 ) -> dict[str, int]:
-    """Bulk-INSERT change feed rows; return {sop_uid: sequence}."""
+    """Bulk-INSERT change feed rows; return {sop_uid: sequence}.
+
+    Chunks the rows so each statement stays under PostgreSQL's 32767
+    bind-parameter cap.  ``change_feed`` rows have 7 columns so the
+    chunk size is much larger than the dicom_instances path, but we
+    still chunk for consistency with the POST/PUT paths and to guard
+    against future column additions.
+    """
     if not feed_rows:
         return {}
 
-    insert_stmt = (
-        dialect_insert(db, ChangeFeedEntry.__table__)
-        .values(feed_rows)
-        .returning(
-            ChangeFeedEntry.__table__.c.sequence,
-            ChangeFeedEntry.__table__.c.sop_instance_uid,
+    chunk_size = bulk_chunk_size(feed_rows)
+    seq_by_sop: dict[str, int] = {}
+    for start in range(0, len(feed_rows), chunk_size):
+        chunk = feed_rows[start : start + chunk_size]
+        insert_stmt = (
+            dialect_insert(db, ChangeFeedEntry.__table__)
+            .values(chunk)
+            .returning(
+                ChangeFeedEntry.__table__.c.sequence,
+                ChangeFeedEntry.__table__.c.sop_instance_uid,
+            )
         )
-    )
-    rows = (await db.execute(insert_stmt)).all()
-    return {row[1]: row[0] for row in rows}
+        rows = (await db.execute(insert_stmt)).all()
+        seq_by_sop.update({row[1]: row[0] for row in rows})
+    return seq_by_sop
 
 
 async def _persist_post(staged: list[_StagedRecord], db: AsyncSession, result: StowResult) -> None:
@@ -795,43 +848,60 @@ async def _persist_put(staged: list[_StagedRecord], db: AsyncSession, result: St
         return
 
     sops = [s.record.sop_uid for s in staged]
-    existing_q = await db.execute(
-        select(DicomInstance.sop_instance_uid, DicomInstance.file_path).where(
-            DicomInstance.sop_instance_uid.in_(sops)
+    # ``IN (?,?,...)`` expands one bind param per element.  Chunk the
+    # SELECT (and the change_feed UPDATE further down) so neither
+    # statement exceeds PostgreSQL's 32767 bind-parameter cap.
+    existing_map: dict[str, str] = {}
+    in_chunk = PG_MAX_BIND_PARAMS - PG_BIND_HEADROOM
+    for start in range(0, len(sops), in_chunk):
+        sop_chunk = sops[start : start + in_chunk]
+        existing_q = await db.execute(
+            select(DicomInstance.sop_instance_uid, DicomInstance.file_path).where(
+                DicomInstance.sop_instance_uid.in_(sop_chunk)
+            )
         )
-    )
-    existing_map: dict[str, str] = {row[0]: row[1] for row in existing_q.all()}
+        for row in existing_q.all():
+            existing_map[row[0]] = row[1]
 
     now = datetime.now(timezone.utc)
     rows = [_build_dicom_instance_row(s, now=now) for s in staged]
+    chunk_size = bulk_chunk_size(rows)
 
-    insert_stmt = dialect_insert(db, DicomInstance.__table__).values(rows)
-    excluded = insert_stmt.excluded
-    update_set = {
-        col.name: excluded[col.name]
+    # Bulk UPSERT in chunks.  ``ON CONFLICT DO UPDATE SET col = excluded.col``
+    # doesn't add bind params (the ``excluded.*`` references aren't bound),
+    # so the chunk math is the same as the POST path.
+    update_columns = [
+        col.name
         for col in DicomInstance.__table__.columns
         if col.name not in ("id", "sop_instance_uid", "created_at")
-    }
-    upsert_stmt = insert_stmt.on_conflict_do_update(
-        index_elements=[DicomInstance.__table__.c.sop_instance_uid],
-        set_=update_set,
-    )
-    await db.execute(upsert_stmt)
+    ]
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start : start + chunk_size]
+        insert_stmt = dialect_insert(db, DicomInstance.__table__).values(chunk)
+        excluded = insert_stmt.excluded
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[DicomInstance.__table__.c.sop_instance_uid],
+            set_={col: excluded[col] for col in update_columns},
+        )
+        await db.execute(upsert_stmt)
 
     # Mark all previously-current change_feed entries for replaced SOPs
-    # as "replaced" in a single bulk UPDATE — replaces the per-row
+    # as "replaced" in chunked bulk UPDATEs — replaces the per-row
     # ``_mark_previous_feed_entries`` call we used to make in the loop.
     if existing_map:
-        await db.execute(
-            sql_update(ChangeFeedEntry)
-            .where(
-                and_(
-                    ChangeFeedEntry.sop_instance_uid.in_(existing_map.keys()),
-                    ChangeFeedEntry.state == "current",
+        replaced_sops = list(existing_map.keys())
+        for start in range(0, len(replaced_sops), in_chunk):
+            sop_chunk = replaced_sops[start : start + in_chunk]
+            await db.execute(
+                sql_update(ChangeFeedEntry)
+                .where(
+                    and_(
+                        ChangeFeedEntry.sop_instance_uid.in_(sop_chunk),
+                        ChangeFeedEntry.state == "current",
+                    )
                 )
+                .values(state="replaced")
             )
-            .values(state="replaced")
-        )
 
     feed_rows = [
         {
@@ -927,6 +997,23 @@ async def _process_stow_records(
         # transaction and unlink every file we wrote in this request so
         # disk and DB stay in sync.  A single 0xC000 envelope failure
         # tells the client the batch as a whole did not commit.
+        #
+        # Log the exception with stack trace BEFORE we lose the context.
+        # The raw error also lands in the response body's WarningReason
+        # tag (00081196) for the client, but operators triaging a 409
+        # need it visible in the container logs too.  Include batch size
+        # and study UIDs so the failure is correlatable against client
+        # logs without re-running the request.
+        study_uids = sorted({s.record.study_uid for s in staged})
+        sop_uids = [s.record.sop_uid for s in staged]
+        logger.exception(
+            "STOW bulk persist failed (upsert=%s, n=%d, studies=%s); rolling back batch. "
+            "First few SOP UIDs: %s",
+            upsert,
+            len(staged),
+            study_uids[:5],
+            sop_uids[:5],
+        )
         await db.rollback()
         files_to_clean = list(result.written_files)
         result.stored.clear()
@@ -1170,6 +1257,12 @@ async def stow_rs(
     try:
         await db.commit()
     except SQLAlchemyError:
+        logger.exception(
+            "STOW POST commit failed (n_stored=%d); rolling back and unlinking "
+            "%d orphaned file(s)",
+            len(result.stored),
+            len(result.written_files),
+        )
         await db.rollback()
         # Files written for parts that survived per-part validation are
         # now orphans: their DB rows just got rolled back.  Remove them
@@ -1261,6 +1354,12 @@ async def stow_rs_put(
     try:
         await db.commit()
     except SQLAlchemyError:
+        logger.exception(
+            "STOW PUT commit failed (n_stored=%d); rolling back and unlinking "
+            "%d orphaned file(s)",
+            len(result.stored),
+            len(result.written_files),
+        )
         await db.rollback()
         if result.written_files:
             await _unlink_files(result.written_files)

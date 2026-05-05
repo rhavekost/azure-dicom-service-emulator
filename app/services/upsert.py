@@ -26,7 +26,12 @@ from sqlalchemy import delete as sql_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import dialect_insert
+from app.database import (
+    PG_BIND_HEADROOM,
+    PG_MAX_BIND_PARAMS,
+    bulk_chunk_size,
+    dialect_insert,
+)
 from app.models.dicom import DicomInstance
 
 
@@ -180,12 +185,20 @@ async def upsert_instances_bulk(
         return []
 
     sops = [r.sop_uid for r in records]
-    existing_q = await db.execute(
-        select(DicomInstance.sop_instance_uid, DicomInstance.file_path).where(
-            DicomInstance.sop_instance_uid.in_(sops)
+    # ``IN (?,?,...)`` expands one bind param per element.  Chunk the
+    # SELECT so it stays under PostgreSQL's 32767 bind-param cap (asyncpg
+    # raises ``InterfaceError`` past that point).
+    existing_map: dict[str, str] = {}
+    in_chunk = PG_MAX_BIND_PARAMS - PG_BIND_HEADROOM
+    for start in range(0, len(sops), in_chunk):
+        sop_chunk = sops[start : start + in_chunk]
+        existing_q = await db.execute(
+            select(DicomInstance.sop_instance_uid, DicomInstance.file_path).where(
+                DicomInstance.sop_instance_uid.in_(sop_chunk)
+            )
         )
-    )
-    existing_map: dict[str, str] = {row[0]: row[1] for row in existing_q.all()}
+        for row in existing_q.all():
+            existing_map[row[0]] = row[1]
 
     # Generate a UUID per record up front so we can return it in the
     # outcome (callers building events / change-feed rows need it).
@@ -225,22 +238,27 @@ async def upsert_instances_bulk(
             }
         )
 
-    insert_stmt = dialect_insert(db, DicomInstance.__table__).values(rows)
-    # ON CONFLICT DO UPDATE — on a duplicate sop_instance_uid we replace
-    # every column EXCEPT the synthetic primary key and the original
-    # ``created_at`` timestamp.  ``excluded`` resolves to the row that
-    # would have been inserted, which is the new data.
-    excluded = insert_stmt.excluded
-    update_set = {
-        col.name: excluded[col.name]
+    # Bulk UPSERT in chunks so each statement stays under PostgreSQL's
+    # 32767 bind-param cap.  ``ON CONFLICT DO UPDATE SET col = excluded.col``
+    # doesn't add bind params (the ``excluded.*`` references aren't bound),
+    # so the chunk math is just ``cols * rows`` per chunk.  All chunks
+    # share the caller's transaction, so a failure in chunk N rolls the
+    # whole upsert back.
+    update_columns = [
+        col.name
         for col in DicomInstance.__table__.columns
         if col.name not in ("id", "sop_instance_uid", "created_at")
-    }
-    upsert_stmt = insert_stmt.on_conflict_do_update(
-        index_elements=[DicomInstance.__table__.c.sop_instance_uid],
-        set_=update_set,
-    )
-    await db.execute(upsert_stmt)
+    ]
+    chunk_size = bulk_chunk_size(rows)
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start : start + chunk_size]
+        insert_stmt = dialect_insert(db, DicomInstance.__table__).values(chunk)
+        excluded = insert_stmt.excluded
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[DicomInstance.__table__.c.sop_instance_uid],
+            set_={col: excluded[col] for col in update_columns},
+        )
+        await db.execute(upsert_stmt)
 
     # The Core UPDATE bypasses SQLAlchemy's identity map, so any
     # ``DicomInstance`` ORM rows the caller already loaded for the same
