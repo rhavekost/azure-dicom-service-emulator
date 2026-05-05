@@ -237,7 +237,6 @@ async def iter_multipart_related(
     boundary_bytes = f"--{boundary}".encode()
 
     buf = bytearray()
-    eof = False
 
     try:
         async for chunk in stream:
@@ -260,7 +259,6 @@ async def iter_multipart_related(
         )
 
     # End of stream — drain whatever's left.
-    eof = True
     parts, consumed = _scan_buffer(buf, boundary_bytes, eof=True)
     if consumed:
         del buf[:consumed]

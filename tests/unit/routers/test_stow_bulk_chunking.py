@@ -18,7 +18,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import database as db_module
-from app.routers import stow as stow_module
 from tests.fixtures.factories import DicomFactory
 from tests.integration.test_stow_rs_success import build_multipart_request
 

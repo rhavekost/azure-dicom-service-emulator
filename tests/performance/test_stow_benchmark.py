@@ -198,11 +198,13 @@ def bench_client(tmp_path_factory):
     from app.routers import (
         changefeed,
         debug,
-        delete as delete_router,
         dicomweb,
         extended_query_tags,
         operations,
         ups,
+    )
+    from app.routers import (
+        delete as delete_router,
     )
 
     test_app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])

@@ -43,33 +43,21 @@ from app.database import (
 from app.models.dicom import ChangeFeedEntry, DicomInstance, DicomStudy, Operation
 from app.models.events import DicomEvent
 from app.routers._shared import (
-    DICOM_STORAGE_DIR,
     _json_dumps,
 )
 from app.schemas.stow import StowResponse  # noqa: F401 — imported for OpenAPI schema registration
 from app.services.dicom_engine import (
     build_store_response,
-    dataset_to_dicom_json,
-    extract_searchable_metadata,
-    parse_dicom,
-    store_instance,
     store_instance_bytes,
-    validate_required_attributes,
-    validate_searchable_attributes,
 )
 from app.services.dicom_parse_worker import ParsedPartRecord, parse_part_to_record
 from app.services.multipart import (
     MultipartPart,
     iter_multipart_related,
-    parse_multipart_related,
 )
 from app.services.upsert import (
-    BulkUpsertOutcome,
-    BulkUpsertRecord,
     _try_rmdir,
     _try_unlink,
-    upsert_instance,
-    upsert_instances_bulk,
 )
 
 logger = logging.getLogger(__name__)
@@ -903,7 +891,7 @@ async def _persist_put(staged: list[_StagedRecord], db: AsyncSession, result: St
                 .values(state="replaced")
             )
 
-    feed_rows = [
+    feed_rows: list[dict[str, Any]] = [
         {
             "study_instance_uid": s.record.study_uid,
             "series_instance_uid": s.record.series_uid,
