@@ -107,7 +107,15 @@ class DicomInstance(Base):
 
 
 class ChangeFeedEntry(Base):
-    """Change feed tracking — mirrors Azure DICOM Service change feed."""
+    """Change feed tracking — mirrors Azure DICOM Service change feed.
+
+    The ``event_published_at`` column doubles as a lightweight outbox: the
+    background event publisher stamps it on successful ``publish_batch`` so
+    the startup sweeper can find any rows that landed in the table but
+    never made it to the queue (e.g. a hard kill between commit and the
+    publisher's stamp).  The partial index keeps the sweep query cheap as
+    the table grows.
+    """
 
     __tablename__ = "change_feed"
 
@@ -123,8 +131,26 @@ class ChangeFeedEntry(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     dicom_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Outbox stamp — NULL until the fire-and-forget event publisher
+    # confirms the batch hit the configured providers.  Indexed via a
+    # partial index (only NULL rows) so the startup sweeper can find
+    # un-published rows in O(log n) regardless of how big the table grows.
+    event_published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    __table_args__ = (Index("ix_changefeed_timestamp", "timestamp"),)
+    __table_args__ = (
+        Index("ix_changefeed_timestamp", "timestamp"),
+        # Partial index over un-published rows so the startup sweeper's
+        # ``WHERE event_published_at IS NULL`` query stays cheap as the
+        # table grows.  ``postgresql_where`` is honoured on PostgreSQL and
+        # ignored on SQLite (which gets a full index — fine for tests).
+        Index(
+            "ix_changefeed_unpublished",
+            "sequence",
+            postgresql_where="event_published_at IS NULL",
+        ),
+    )
 
 
 class ExtendedQueryTag(Base):

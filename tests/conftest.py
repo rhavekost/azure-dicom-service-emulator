@@ -57,14 +57,25 @@ def client(tmp_path, monkeypatch, test_engine_and_session):
                 await session.rollback()
                 raise
 
-    # Create a lifespan context for the test app
     @asynccontextmanager
     async def test_lifespan(app: FastAPI):
         # Create tables
         async with test_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        # Mirror the production lifespan's app-state contract so the
+        # streaming STOW path can register fire-and-forget event tasks
+        # and dispatch parsing through (an absent) parse pool.  Tests
+        # that need to inspect events should drain this set themselves.
+        app.state.pending_event_tasks = set()
+        app.state.parse_pool = None
         yield
-        # Cleanup
+        # Drain any background event tasks the route handlers spawned
+        # during tests so they don't leak across tests / leave RuntimeWarnings.
+        pending: set = app.state.pending_event_tasks
+        if pending:
+            import asyncio as _asyncio
+
+            await _asyncio.gather(*pending, return_exceptions=True)
         await test_engine.dispose()
 
     # Create test app

@@ -121,18 +121,23 @@ async def test_stow_publishes_event_with_integer_sequence(
     from app.routers import dicomweb
 
     app = FastAPI(lifespan=test_lifespan)
+    # ``ASGITransport`` does NOT run the lifespan, so initialise the
+    # streaming-STOW app-state contract directly on the app object.
+    # The route handlers expect ``pending_event_tasks`` to be present
+    # so fire-and-forget event tasks can be tracked, and ``parse_pool``
+    # to be either a ``ProcessPoolExecutor`` or ``None`` (None falls
+    # back to the default thread executor).
+    app.state.pending_event_tasks = set()
+    app.state.parse_pool = None
     app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])
 
-    # Override database dependency
     async def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # Create test DICOM
     dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom_bytes()
 
-    # Upload via STOW-RS
     boundary = "test-boundary"
     body = (
         (f"--{boundary}\r\n" f"Content-Type: application/dicom\r\n\r\n").encode()
@@ -151,7 +156,15 @@ async def test_stow_publishes_event_with_integer_sequence(
 
     assert response.status_code in (200, 202)
 
-    # Verify event was published
+    # Drain the fire-and-forget event publish task before inspecting
+    # the in-memory provider.  Without this drain the assertion below
+    # would race the background task and observe an empty event list.
+    import asyncio
+
+    pending = list(app.state.pending_event_tasks)
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
     events = in_memory_event_provider.get_events()
     assert len(events) == 1
 
@@ -196,18 +209,18 @@ async def test_put_stow_publishes_event_with_integer_sequence(
     from app.routers import dicomweb
 
     app = FastAPI(lifespan=test_lifespan)
+    # ASGITransport doesn't run the lifespan; initialise app-state directly.
+    app.state.pending_event_tasks = set()
+    app.state.parse_pool = None
     app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])
 
-    # Override database dependency
     async def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # Create test DICOM
     dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom_bytes()
 
-    # Upload via PUT STOW-RS (multipart format like POST)
     boundary = "test-boundary"
     body = (
         (f"--{boundary}\r\n" f"Content-Type: application/dicom\r\n\r\n").encode()
@@ -226,7 +239,12 @@ async def test_put_stow_publishes_event_with_integer_sequence(
 
     assert response.status_code in (200, 201, 202)
 
-    # Verify event was published with integer sequence
+    import asyncio
+
+    pending = list(app.state.pending_event_tasks)
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
     events = in_memory_event_provider.get_events()
     assert len(events) >= 1
 
@@ -264,15 +282,16 @@ async def test_delete_publishes_event_with_integer_sequence(
     from app.routers import dicomweb
 
     app = FastAPI(lifespan=test_lifespan)
+    # ASGITransport doesn't run the lifespan; initialise app-state directly.
+    app.state.pending_event_tasks = set()
+    app.state.parse_pool = None
     app.include_router(dicomweb.router, prefix="/v2", tags=["DICOMweb"])
 
-    # Override database dependency
     async def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # First upload an instance
     dcm_bytes, study_uid, series_uid, sop_uid = create_test_dicom_bytes()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -292,10 +311,18 @@ async def test_delete_publishes_event_with_integer_sequence(
             },
         )
 
-        # Clear events from upload
+        # Drain the fire-and-forget upload publish task before clearing,
+        # otherwise the upload event can land *after* the .clear() call
+        # and pollute the assertion below.
+        import asyncio
+
+        pending = list(app.state.pending_event_tasks)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+            app.state.pending_event_tasks.clear()
+
         in_memory_event_provider.clear()
 
-        # Delete the study
         response = await client.delete(f"/v2/studies/{study_uid}")
 
     assert response.status_code == 204

@@ -6,7 +6,6 @@ model (PS3.18 F.2) used by DICOMweb APIs.
 """
 
 import asyncio
-import base64
 import logging
 import os
 import re
@@ -96,12 +95,30 @@ def parse_dicom(data: bytes) -> Dataset:
     return ds
 
 
-def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
-    """
-    Convert a pydicom Dataset to DICOM JSON model (PS3.18 F.2).
+def dataset_to_dicom_json(
+    ds: Dataset,
+    *,
+    bulkdata_base: str | None = None,
+) -> dict[str, Any]:
+    """Convert a pydicom Dataset to DICOM JSON model (PS3.18 F.2).
 
     Each tag becomes a key like "00100010" with a dict containing
-    "vr" and "Value" (array).
+    ``vr`` and ``Value`` (array).
+
+    Binary VRs (``OB``, ``OD``, ``OF``, ``OL``, ``OW``, ``UN``) are
+    represented as a ``BulkDataURI`` reference rather than inline
+    base64 (which used to bloat the ``dicom_json`` JSONB column by 33%
+    *per pixel-overlay byte*).  When ``bulkdata_base`` is supplied the
+    URI points back into the WADO-RS bulkdata endpoint:
+
+        ``{bulkdata_base}/bulkdata/{tag}``
+
+    where ``bulkdata_base`` is typically the per-instance retrieve URL
+    (``/v2/studies/{s}/series/{ser}/instances/{inst}``).  When
+    ``bulkdata_base`` is None (e.g. ``bulk_update_studies`` rebuilding
+    JSON without instance context), the binary entry is dropped from
+    the JSON entirely — the on-disk DCM file remains the canonical
+    source for those bytes.
     """
     result = {}
     for elem in ds:
@@ -116,7 +133,10 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
 
         if elem.VR == "SQ":
             if elem.value:
-                entry["Value"] = [dataset_to_dicom_json(item) for item in elem.value]
+                entry["Value"] = [
+                    dataset_to_dicom_json(item, bulkdata_base=bulkdata_base)
+                    for item in elem.value
+                ]
         elif elem.VR == "PN":
             if elem.value:
                 name = str(elem.value)
@@ -132,27 +152,18 @@ def dataset_to_dicom_json(ds: Dataset) -> dict[str, Any]:
                 else:
                     entry["Value"] = [elem.value]
         elif elem.VR in ("OB", "OD", "OF", "OL", "OW", "UN"):
-            # Binary data — encode as Base64 in InlineBinary field
-            if elem.value is not None:
-                try:
-                    # Get raw bytes from the element
-                    if isinstance(elem.value, bytes):
-                        raw_bytes = elem.value
-                    else:
-                        raw_bytes = (
-                            elem.value.tobytes()
-                            if hasattr(elem.value, "tobytes")
-                            else bytes(elem.value)
-                        )
-
-                    # Encode as Base64
-                    encoded = base64.b64encode(raw_bytes).decode("ascii")
-                    entry["InlineBinary"] = encoded
-                except Exception as e:
-                    # If encoding fails, skip this element but log for debuggability
-                    logger.debug(
-                        "Skipping DICOM element %s (binary encoding failed): %s", tag_str, e
-                    )
+            # Binary VR — emit a BulkDataURI reference (DICOMweb PS3.18
+            # standard) instead of inline base64.  Skipping the entry
+            # entirely when ``bulkdata_base`` is None keeps callers like
+            # ``bulk_update_studies`` from emitting URIs that point at
+            # nothing.
+            if elem.value is not None and bulkdata_base is not None:
+                entry["BulkDataURI"] = f"{bulkdata_base}/bulkdata/{tag_str}"
+            else:
+                # No bulkdata base and no inline body — emit just the VR
+                # so consumers know the element exists; bytes are in the
+                # DCM blob on disk.
+                pass
         else:
             if elem.value is not None and str(elem.value).strip():
                 entry["Value"] = [str(elem.value)]
@@ -182,33 +193,46 @@ def extract_searchable_metadata(ds: Dataset) -> dict[str, Any]:
     return meta
 
 
-async def store_instance(data: bytes, ds: Dataset) -> str:
-    """
-    Store a DICOM instance to the filesystem.
-    Returns the file path.
+async def store_instance_bytes(
+    data: bytes, study_uid: str, series_uid: str, sop_uid: str
+) -> str:
+    """Store a DICOM instance to the filesystem given its UIDs.
+
+    Used by the streaming STOW path, which receives UIDs from the
+    process-pool worker record and never materialises a full
+    :class:`pydicom.Dataset` on the main asyncio thread.
+
+    Returns the absolute file path.
     """
     ensure_storage_dir()
 
-    study_uid = str(ds.StudyInstanceUID)
-    series_uid = str(ds.SeriesInstanceUID)
-    sop_uid = str(ds.SOPInstanceUID)
-
-    # Validate UIDs to prevent directory traversal attacks
     _validate_uid(study_uid)
     _validate_uid(series_uid)
     _validate_uid(sop_uid)
 
-    # Create instance directory: {storage}/{study}/{series}/{sop}/
     instance_dir = os.path.join(STORAGE_DIR, study_uid, series_uid, sop_uid)
-    # os.makedirs is a fast metadata-only operation; use asyncio.to_thread for consistency
     await asyncio.to_thread(os.makedirs, instance_dir, exist_ok=True)
 
-    # Store as instance.dcm (consistent with frame_cache expectations)
     file_path = os.path.join(instance_dir, "instance.dcm")
     async with aiofiles.open(file_path, "wb") as f:
         await f.write(data)
 
     return file_path
+
+
+async def store_instance(data: bytes, ds: Dataset) -> str:
+    """Store a DICOM instance to the filesystem.
+
+    Backwards-compatible wrapper around :func:`store_instance_bytes` for
+    callers that still hold a parsed :class:`pydicom.Dataset` (e.g. the
+    legacy non-streaming code path and rollback regression tests).
+    """
+    return await store_instance_bytes(
+        data,
+        str(ds.StudyInstanceUID),
+        str(ds.SeriesInstanceUID),
+        str(ds.SOPInstanceUID),
+    )
 
 
 async def read_instance(file_path: str) -> bytes:

@@ -160,15 +160,44 @@ Current configuration (from `pyproject.toml`):
 
 ## Performance Benchmarks
 
-Run performance tests:
+Two flavors of perf tests live under `tests/performance/`:
+
+* `test_stow_perf.py` / `test_qido_perf.py` — wall-clock baselines
+  against a **live** emulator container (skipped if the service at
+  `localhost:8080` isn't reachable).
+* `test_stow_benchmark.py` — `pytest-benchmark` micro-benchmarks driven
+  by an in-process `TestClient`.  No live container needed.  Captures a
+  statistical distribution per scenario for trend-tracking across PRs.
+
+### STOW micro-benchmark
+
 ```bash
-pytest tests/performance/ --benchmark-only
+pytest tests/performance/test_stow_benchmark.py --benchmark-only \
+  --benchmark-columns=mean,median,min,max,stddev,rounds \
+  --benchmark-autosave
 ```
 
-View benchmark comparison:
+Default scenarios are **50** and **500 instances** per request.  The
+heavy **5 000-instance** scenario is opt-in:
+
+```bash
+pytest tests/performance/test_stow_benchmark.py --benchmark-only --run-stow-5k
+```
+
+> **Windows note:** the benchmarks write `.dcm` files to a temp
+> directory whose path includes pydicom-generated UIDs (~64 chars
+> each).  On Windows the default pytest `tmp_path` rooted under
+> `C:\Users\<user>\AppData\Local\Temp\pytest-of-<user>\` exceeds the
+> legacy 260-char `MAX_PATH` limit.  Use a short basetemp:
+> `pytest ... --basetemp=C:\t\b`.
+
+### Comparing runs
+
 ```bash
 pytest tests/performance/ --benchmark-compare
 ```
+
+Saved JSON output lives under `tests/performance/.benchmarks/`.
 
 ## Security Testing
 

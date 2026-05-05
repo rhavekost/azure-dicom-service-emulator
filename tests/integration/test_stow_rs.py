@@ -120,7 +120,7 @@ async def test_put_creates_new_instance(db_session, storage_dir):
     }
 
     # Upsert instance
-    action = await upsert_instance(
+    action, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, dcm_data, storage_dir
     )
 
@@ -167,7 +167,7 @@ async def test_put_replaces_existing_instance(db_session, storage_dir):
         },
     }
 
-    action1 = await upsert_instance(
+    action1, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, dcm_data_v1, storage_dir
     )
     assert action1 == "created"
@@ -197,7 +197,7 @@ async def test_put_replaces_existing_instance(db_session, storage_dir):
         },
     }
 
-    action2 = await upsert_instance(
+    action2, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, dcm_data_v2, storage_dir
     )
     assert action2 == "replaced"

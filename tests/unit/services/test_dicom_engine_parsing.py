@@ -441,23 +441,46 @@ def test_dataset_to_dicom_json_skips_private_tags():
     assert "00090010" not in result
 
 
-def test_dataset_to_dicom_json_binary_inline():
-    """Binary VR types (OB, OW, etc.) are encoded as InlineBinary (Base64)."""
+def test_dataset_to_dicom_json_binary_emits_bulkdata_uri_when_base_provided():
+    """Binary VR types (OB, OW, etc.) are referenced via BulkDataURI.
+
+    PS3.18 supports both ``InlineBinary`` (base64) and ``BulkDataURI``
+    (out-of-line reference) for binary VRs.  We emit ``BulkDataURI``
+    so the JSONB ``dicom_json`` column doesn't pay a 33% size penalty
+    per binary byte; the WADO-RS ``/bulkdata/{tag}`` endpoint resolves
+    the reference back to raw bytes from the on-disk DCM file.
+    """
     ds = Dataset()
-    # Add an OB element with known bytes
     ds.add_new(pydicom.tag.Tag(0x0042, 0x0011), "OB", b"\x01\x02\x03\x04")
 
-    result = dataset_to_dicom_json(ds)
+    base_url = "/v2/studies/1.2.3/series/1.2.3.4/instances/1.2.3.4.5"
+    result = dataset_to_dicom_json(ds, bulkdata_base=base_url)
 
     tag = "00420011"
     assert tag in result
     assert result[tag]["vr"] == "OB"
-    assert "InlineBinary" in result[tag]
-    # Verify it's valid Base64
-    import base64
+    assert "InlineBinary" not in result[tag]
+    assert result[tag]["BulkDataURI"] == f"{base_url}/bulkdata/{tag}"
 
-    decoded = base64.b64decode(result[tag]["InlineBinary"])
-    assert decoded == b"\x01\x02\x03\x04"
+
+def test_dataset_to_dicom_json_binary_drops_entry_without_base():
+    """Without a bulkdata_base, binary VR entries carry only their VR.
+
+    Callers like ``bulk_update_studies`` rebuild ``dicom_json`` without
+    instance context and would emit URIs that point at nothing.  In
+    that mode the converter drops the inline body — the on-disk DCM
+    file remains the canonical source for the bytes.
+    """
+    ds = Dataset()
+    ds.add_new(pydicom.tag.Tag(0x0042, 0x0011), "OB", b"\x01\x02\x03\x04")
+
+    result = dataset_to_dicom_json(ds)  # no bulkdata_base
+
+    tag = "00420011"
+    assert tag in result
+    assert result[tag]["vr"] == "OB"
+    assert "InlineBinary" not in result[tag]
+    assert "BulkDataURI" not in result[tag]
 
 
 # ── Filesystem Operations (store/read/delete) ─────────────────────

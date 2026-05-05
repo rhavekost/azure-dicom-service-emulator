@@ -29,6 +29,31 @@ services:
       DICOM_STORAGE_DIR: /data/dicom
       EXPIRY_INTERVAL_SECONDS: 3600
       # EVENT_PROVIDERS: not set — no event publishing (add to enable)
+      #
+      # ── Uvicorn tuning ────────────────────────────────────────────
+      # Override these to scale workers and connection limits without
+      # rebuilding the image.  Defaults baked into the Dockerfile match
+      # the values listed below.
+      UVICORN_WORKERS: 4
+      UVICORN_KEEPALIVE: 75
+      UVICORN_GRACEFUL_SHUTDOWN: 60
+      UVICORN_LIMIT_CONCURRENCY: 200
+      UVICORN_H11_MAX: 16384
+      #
+      # ── Parse-pool sizing ─────────────────────────────────────────
+      # With UVICORN_WORKERS > 1 each worker spawns its own
+      # ProcessPoolExecutor, so total parse subprocesses is
+      # WORKERS * DICOM_PARSE_WORKERS.  Set DICOM_PARSE_WORKERS=0 to
+      # fall back to the default thread executor (useful on small
+      # boxes where per-process import cost dominates).
+      # DICOM_PARSE_WORKERS: 4
+      # DICOM_PARSE_INFLIGHT: 8
+      #
+      # ── Database connection pool ──────────────────────────────────
+      # DB_POOL_SIZE: 20
+      # DB_MAX_OVERFLOW: 20
+      # DB_POOL_TIMEOUT_SECONDS: 30
+      # DB_POOL_RECYCLE_SECONDS: 1800
     volumes:
       - dicom-data:/data/dicom
     depends_on:
@@ -39,7 +64,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 30s  # cover spawn-pool warm-up across N workers
 
   postgres:
     image: postgres:16-alpine
