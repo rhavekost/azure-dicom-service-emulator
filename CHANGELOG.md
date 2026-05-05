@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Multi-worker startup race when initializing the PostgreSQL schema. With
+  `UVICORN_WORKERS > 1`, two workers could both pass the existence check in
+  `CREATE EXTENSION IF NOT EXISTS pg_trgm` (or `CREATE TABLE IF NOT EXISTS`)
+  and the loser would crash with `UniqueViolationError` on
+  `pg_extension_name_index` / `pg_class_relname_nsp_index`. Uvicorn would
+  respawn the worker and it would self-heal on the next boot (because the
+  catalog row now exists), but the noisy "Application startup failed" /
+  "Child process died" lines made every container start look broken. Schema
+  initialization now serializes concurrent workers with
+  `pg_advisory_xact_lock`, which is also safe under PgBouncer transaction-mode
+  pooling.
+
 ## [0.3.3] - 2026-04-12
 
 ### Fixed

@@ -30,6 +30,12 @@ services:
             "enabled": true
           }
         ]
+      # ── Uvicorn tuning ────────────────────────────────────────────
+      UVICORN_WORKERS: 4
+      UVICORN_KEEPALIVE: 75
+      UVICORN_GRACEFUL_SHUTDOWN: 60
+      UVICORN_LIMIT_CONCURRENCY: 200
+      UVICORN_H11_MAX: 16384
     volumes:
       - dicom-data:/data/dicom
     depends_on:
@@ -42,7 +48,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 30s  # cover spawn-pool warm-up across N workers
 
   postgres:
     image: postgres:16-alpine

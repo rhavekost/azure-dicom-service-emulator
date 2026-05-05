@@ -89,7 +89,14 @@ class FileEventProvider(EventProvider):
 
 
 class WebhookEventProvider(EventProvider):
-    """Webhook-based event provider with retry logic."""
+    """Webhook-based event provider with retry logic.
+
+    For batch publishes the same :class:`httpx.AsyncClient` is reused
+    across every event.  Each event is its own POST (matching the prior
+    contract), but the underlying TLS handshake + connection pool is
+    shared, which is significant when a STOW request fans out hundreds
+    of ``DicomImageCreated`` events.
+    """
 
     def __init__(self, url: str, retry_attempts: int = 3):
         self.url = url
@@ -104,33 +111,88 @@ class WebhookEventProvider(EventProvider):
             reraise=True,
         )
 
-    async def _send_webhook(self, event: DicomEvent) -> None:
-        """Send webhook with exponential backoff retry."""
+    async def _send_webhook(
+        self, event: DicomEvent, client: httpx.AsyncClient | None = None
+    ) -> None:
+        """Send webhook with exponential backoff retry.
 
-        # Apply retry decorator dynamically
-        @self._get_retry_decorator()
-        async def _do_send():
-            async with httpx.AsyncClient() as client:
-                response = await client.post(self.url, json=event.to_dict(), timeout=5.0)
-                response.raise_for_status()
+        When ``client`` is supplied, the POST reuses that connection
+        pool (no per-event TLS handshake).  When omitted, a one-shot
+        client is created — used by the legacy single-event ``publish``
+        path and tests that mock ``httpx.AsyncClient.post`` directly.
+        """
+        retry_decorator = self._get_retry_decorator()
 
-        await _do_send()
+        if client is None:
+
+            @retry_decorator
+            async def _do_send_oneshot() -> None:
+                async with httpx.AsyncClient() as oneshot:
+                    response = await oneshot.post(self.url, json=event.to_dict(), timeout=5.0)
+                    response.raise_for_status()
+
+            await _do_send_oneshot()
+            return
+
+        @retry_decorator
+        async def _do_send_shared() -> None:
+            response = await client.post(self.url, json=event.to_dict(), timeout=5.0)
+            response.raise_for_status()
+
+        await _do_send_shared()
 
     async def publish(self, event: DicomEvent) -> None:
         """Publish event via webhook POST."""
         await self._send_webhook(event)
 
     async def publish_batch(self, events: list[DicomEvent]) -> None:
-        """Publish batch of events via webhook (sends each separately)."""
-        for event in events:
-            await self._send_webhook(event)
+        """POST each event with a single shared httpx.AsyncClient.
+
+        Connection reuse + HTTP keep-alive turn N TLS handshakes into 1,
+        which is the bottleneck for high-fanout STOW requests.  Per-event
+        retries are still independent so a transient failure on one
+        event doesn't block the rest.
+        """
+        if not events:
+            return
+        async with httpx.AsyncClient() as client:
+            for event in events:
+                await self._send_webhook(event, client=client)
 
 
 class AzureStorageQueueProvider(EventProvider):
-    """Azure Storage Queue event provider (Azurite compatible)."""
+    """Azure Storage Queue event provider (Azurite compatible).
 
-    def __init__(self, connection_string: str, queue_name: str):
+    ``send_message`` is a synchronous SDK call, so each publish hops to
+    the default thread pool via :func:`asyncio.to_thread`.  For STOW
+    fan-out batches (potentially thousands of events) a serial loop here
+    becomes the round-trip-bound bottleneck of the whole publish path.
+
+    :meth:`publish_batch` therefore runs the per-event sends through a
+    bounded :class:`asyncio.Semaphore`-throttled :func:`asyncio.gather`.
+    The semaphore is critical: an unbounded gather would submit every
+    event to the default thread pool at once, starving every other
+    ``to_thread`` caller in the app (``aiofiles``, parse-pool dispatch,
+    etc.).  The cap is configurable via
+    ``EVENT_AZURE_QUEUE_BATCH_CONCURRENCY`` (default 16) — Azurite + the
+    SDK client are both naturally bounded around that range.
+    """
+
+    def __init__(
+        self,
+        connection_string: str,
+        queue_name: str,
+        *,
+        batch_concurrency: int | None = None,
+    ):
         self.queue_client = QueueClient.from_connection_string(connection_string, queue_name)
+        if batch_concurrency is None:
+            from app.config import EVENT_AZURE_QUEUE_BATCH_CONCURRENCY
+
+            batch_concurrency = EVENT_AZURE_QUEUE_BATCH_CONCURRENCY
+        if batch_concurrency < 1:
+            raise ValueError("batch_concurrency must be >= 1")
+        self._batch_concurrency = batch_concurrency
 
     async def publish(self, event: DicomEvent) -> None:
         """Send event to Azure Storage Queue."""
@@ -138,10 +200,34 @@ class AzureStorageQueueProvider(EventProvider):
         await asyncio.to_thread(self.queue_client.send_message, message)
 
     async def publish_batch(self, events: list[DicomEvent]) -> None:
-        """Send batch of events to Azure Storage Queue."""
-        for event in events:
+        """Send batch of events through a bounded ``asyncio.gather``.
+
+        Per-event failures are isolated: ``return_exceptions=True`` lets
+        the rest of the batch proceed, then we log a summary of any
+        failures at the end.  The outbox sweeper picks up anything we
+        missed on the next process boot, so a transient queue blip
+        doesn't lose events permanently.
+        """
+        if not events:
+            return
+
+        sem = asyncio.Semaphore(self._batch_concurrency)
+
+        async def _send(event: DicomEvent) -> None:
             message = json.dumps(event.to_dict())
-            await asyncio.to_thread(self.queue_client.send_message, message)
+            async with sem:
+                await asyncio.to_thread(self.queue_client.send_message, message)
+
+        results = await asyncio.gather(*(_send(e) for e in events), return_exceptions=True)
+        failures = [r for r in results if isinstance(r, BaseException)]
+        if failures:
+            logger.warning(
+                "AzureStorageQueueProvider.publish_batch: %d/%d send_message call(s) failed; "
+                "first error: %s",
+                len(failures),
+                len(events),
+                failures[0],
+            )
 
     async def close(self) -> None:
         """Close queue client connection."""

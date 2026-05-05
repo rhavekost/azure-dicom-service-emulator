@@ -118,7 +118,7 @@ wheels = [
 
 [[package]]
 name = "azure-dicom-service-emulator"
-version = "0.3.1"
+version = "0.3.4"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },

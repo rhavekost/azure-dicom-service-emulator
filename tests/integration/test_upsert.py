@@ -98,7 +98,7 @@ async def test_create_instance_exists_in_db_and_filesystem(
     sop_uid = "1.2.100.1.1"
     dcm_data = _make_dicom_data(patient_id="CREATE-PAT", file_bytes=b"NEW_BYTES_V1")
 
-    action = await upsert_instance(
+    action, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, dcm_data, storage_dir
     )
     await db_session.commit()
@@ -140,7 +140,7 @@ async def test_replace_instance_updates_db_and_file(db_session: AsyncSession, st
     updated_data = _make_dicom_data(
         patient_id="UPDATED-PAT", modality="MR", file_bytes=b"UPDATED_BYTES"
     )
-    action = await upsert_instance(
+    action, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, updated_data, storage_dir
     )
     await db_session.commit()
@@ -282,7 +282,9 @@ async def test_replace_with_different_uids_old_file_is_removed(
 
     # Now replace instance B with updated data (same sop_b UID — same path)
     data_b_v2 = _make_dicom_data(patient_id="PAT-B-V2", file_bytes=b"BYTES_B_V2")
-    action = await upsert_instance(db_session, study_b, series_b, sop_b, data_b_v2, storage_dir)
+    action, _ = await upsert_instance(
+        db_session, study_b, series_b, sop_b, data_b_v2, storage_dir
+    )
     await db_session.commit()
 
     assert action == "replaced"

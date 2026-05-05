@@ -60,5 +60,24 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
 # Expose port
 EXPOSE 8080
 
+# Uvicorn tuning knobs — overridable via env without rebuilding.
+#   UVICORN_WORKERS:                number of worker processes
+#   UVICORN_KEEPALIVE:              keep-alive timeout (seconds) — long enough
+#                                   to span large STOW request bodies
+#   UVICORN_GRACEFUL_SHUTDOWN:      seconds to drain in-flight requests on stop
+#   UVICORN_LIMIT_CONCURRENCY:      max concurrent connections per worker
+#   UVICORN_H11_MAX:                h11 incomplete-event buffer size (bytes)
+ENV UVICORN_WORKERS=4 \
+    UVICORN_KEEPALIVE=75 \
+    UVICORN_GRACEFUL_SHUTDOWN=60 \
+    UVICORN_LIMIT_CONCURRENCY=200 \
+    UVICORN_H11_MAX=16384
+
 # Run application
-CMD /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080
+CMD ["sh", "-c", "/app/.venv/bin/uvicorn main:app \
+  --host 0.0.0.0 --port 8080 \
+  --workers ${UVICORN_WORKERS} \
+  --timeout-keep-alive ${UVICORN_KEEPALIVE} \
+  --timeout-graceful-shutdown ${UVICORN_GRACEFUL_SHUTDOWN} \
+  --limit-concurrency ${UVICORN_LIMIT_CONCURRENCY} \
+  --h11-max-incomplete-event-size ${UVICORN_H11_MAX}"]

@@ -68,11 +68,12 @@ async def test_upsert_creates_new_instance(db_session, storage_dir, sample_dicom
     series_uid = "1.2.3.4"
     sop_uid = "1.2.3.4.5"
 
-    result = await upsert_instance(
+    action, file_path = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
 
-    assert result == "created"
+    assert action == "created"
+    assert file_path  # absolute path to the freshly written .dcm
 
     # Verify instance was stored in database
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -100,10 +101,10 @@ async def test_upsert_replaces_existing_instance(db_session, storage_dir, sample
     sop_uid = "1.2.3.4.5"
 
     # Create initial instance
-    result1 = await upsert_instance(
+    action1, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, sample_dicom_data, storage_dir
     )
-    assert result1 == "created"
+    assert action1 == "created"
 
     # Get the original file path
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)
@@ -130,10 +131,10 @@ async def test_upsert_replaces_existing_instance(db_session, storage_dir, sample
     }
 
     # Replace the instance
-    result2 = await upsert_instance(
+    action2, _ = await upsert_instance(
         db_session, study_uid, series_uid, sop_uid, updated_data, storage_dir
     )
-    assert result2 == "replaced"
+    assert action2 == "replaced"
 
     # Verify instance was updated in database
     stmt = select(DicomInstance).where(DicomInstance.sop_instance_uid == sop_uid)

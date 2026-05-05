@@ -27,6 +27,12 @@ services:
       EXPIRY_INTERVAL_SECONDS: 3600
       # Optional: uncomment to enable Azure Storage Queue event publishing
       # EVENT_PROVIDERS: '[{"type":"azure_storage_queue","connection_string":"...","queue_name":"dicom-events","enabled":true}]'
+      # ── Uvicorn tuning ────────────────────────────────────────────
+      UVICORN_WORKERS: 4
+      UVICORN_KEEPALIVE: 75
+      UVICORN_GRACEFUL_SHUTDOWN: 60
+      UVICORN_LIMIT_CONCURRENCY: 200
+      UVICORN_H11_MAX: 16384
     volumes:
       - dicom-data:/data/dicom
     healthcheck:
@@ -34,7 +40,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
+      start_period: 30s  # cover spawn-pool warm-up across N workers
 
 volumes:
   dicom-data:

@@ -45,6 +45,49 @@ async def test_webhook_provider_publish_batch():
 
 
 @pytest.mark.asyncio
+async def test_webhook_provider_publish_batch_reuses_single_client():
+    """publish_batch must share one AsyncClient across the whole batch.
+
+    Without the shared client, each event would open its own TLS
+    connection — the regression we're guarding against here.  The
+    assertion is on the number of ``httpx.AsyncClient()`` constructor
+    calls, not on the number of POSTs.
+    """
+    from unittest.mock import patch as _patch
+
+    real_client_cls = httpx.AsyncClient
+    construct_count = 0
+
+    def _counting_client(*args, **kwargs):
+        nonlocal construct_count
+        construct_count += 1
+        return real_client_cls(*args, **kwargs)
+
+    with _patch("httpx.AsyncClient", side_effect=_counting_client) as _:
+        with _patch.object(real_client_cls, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value.status_code = 200
+
+            provider = WebhookEventProvider("https://webhook.site/test")
+            events = [
+                DicomEvent.from_instance_created(
+                    "1.2.3", "4.5.6", f"7.8.{i}", i, "http://localhost"
+                )
+                for i in range(5)
+            ]
+            await provider.publish_batch(events)
+
+    assert construct_count == 1, (
+        f"WebhookEventProvider.publish_batch must construct exactly one "
+        f"httpx.AsyncClient for the batch; got {construct_count}"
+    )
+    assert mock_post.await_count == 5
+
+
+# ── needed for the imports above ──────────────────────────────────
+import httpx  # noqa: E402  (kept after pytest fixtures for readability)
+
+
+@pytest.mark.asyncio
 async def test_webhook_provider_retry_on_failure():
     """WebhookProvider retries on HTTP errors."""
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:

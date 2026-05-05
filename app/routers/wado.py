@@ -8,15 +8,19 @@ Endpoints:
 - GET /v2/studies/{study_uid}/series/{series_uid}/metadata
 - GET /v2/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}
 - GET /v2/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/metadata
+- GET /v2/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/bulkdata/{tag}
 - GET /v2/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frames}
 - GET /v2/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/rendered
 - GET /v2/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/frames/{frame}/rendered
 """
 
+import asyncio
 import logging
+import re
 import uuid
 from typing import Any, Optional
 
+import pydicom
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +42,9 @@ from app.services.image_rendering import render_frame as render_frame_to_image
 from app.services.multipart import build_multipart_response
 
 logger = logging.getLogger(__name__)
+
+# DICOM tag references in BulkDataURIs are 8 hex digits ("GGGGEEEE").
+_DICOM_TAG_RE = re.compile(r"^[0-9A-Fa-f]{8}$")
 
 router = APIRouter()
 
@@ -222,6 +229,91 @@ async def wado_rs_instance_metadata(
         instance_uid=instance_uid,
         if_none_match=if_none_match,
     )
+
+
+_WADO_BULKDATA_RESPONSES: dict[int | str, dict[str, Any]] = {
+    200: {
+        "description": "Raw bytes of the binary VR identified by tag",
+        "content": {
+            "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
+        },
+    },
+    404: {"description": "Instance, file, or tag not found"},
+}
+
+
+@router.get(
+    "/studies/{study_uid}/series/{series_uid}/instances/{instance_uid}/bulkdata/{tag}",
+    response_class=Response,
+    responses=_WADO_BULKDATA_RESPONSES,
+    summary="Retrieve raw bytes of a binary DICOM tag (BulkDataURI target)",
+)
+async def retrieve_bulkdata(
+    study_uid: str,
+    series_uid: str,
+    instance_uid: str,
+    tag: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a ``BulkDataURI`` reference back to the raw element bytes.
+
+    The DICOMweb metadata path emits ``BulkDataURI`` entries for binary
+    VRs (OB / OD / OF / OL / OW / UN) instead of inline base64.  This
+    endpoint is the resolver: re-read the on-disk DCM file via pydicom,
+    pull the requested tag's bytes, and stream them as
+    ``application/octet-stream``.
+
+    The pydicom read is dispatched through ``asyncio.to_thread`` so a
+    large overlay payload doesn't pin the asyncio event loop.
+    """
+    if not _DICOM_TAG_RE.match(tag):
+        raise HTTPException(
+            status_code=400,
+            detail="tag must be 8 hexadecimal digits (DICOM GGGGEEEE format)",
+        )
+
+    result = await db.execute(
+        select(DicomInstance).where(
+            DicomInstance.study_instance_uid == study_uid,
+            DicomInstance.series_instance_uid == series_uid,
+            DicomInstance.sop_instance_uid == instance_uid,
+        )
+    )
+    db_instance = result.scalar_one_or_none()
+    if db_instance is None:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    file_path = db_instance.file_path
+
+    def _extract_tag_bytes() -> bytes | None:
+        """Synchronous worker — runs in a thread.  Returns the tag's raw bytes."""
+        ds = pydicom.dcmread(file_path, force=True)
+        group = int(tag[:4], 16)
+        element = int(tag[4:], 16)
+        try:
+            elem = ds[(group, element)]
+        except KeyError:
+            return None
+        if elem.value is None:
+            return None
+        if isinstance(elem.value, bytes):
+            return elem.value
+        if hasattr(elem.value, "tobytes"):
+            return elem.value.tobytes()
+        try:
+            return bytes(elem.value)
+        except Exception:
+            return None
+
+    try:
+        data = await asyncio.to_thread(_extract_tag_bytes)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Instance file not found")
+
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Tag {tag} not present in instance")
+
+    return Response(content=data, media_type="application/octet-stream")
 
 
 @router.get(

@@ -251,6 +251,48 @@ docker buildx build --platform linux/amd64 -t <registry>/azure-dicom-emulator:v1
   - Configure proper health checks
   - Consider authentication middleware
 
+### Multi-worker / parse-pool sizing
+
+The container runs uvicorn with `UVICORN_WORKERS` worker processes by
+default (`4`).  Each worker independently boots a `ProcessPoolExecutor`
+with `DICOM_PARSE_WORKERS` subprocesses to push pydicom parsing off the
+event loop.  Total parse subprocesses ~= `UVICORN_WORKERS *
+DICOM_PARSE_WORKERS`.
+
+Recommended starting points:
+
+| Host shape         | UVICORN_WORKERS | DICOM_PARSE_WORKERS | DICOM_PARSE_INFLIGHT |
+| ------------------ | --------------- | ------------------- | -------------------- |
+| Laptop (4 cores)   | 1               | 4                   | 8                    |
+| Small VM (4 vCPU)  | 2               | 2                   | 4                    |
+| Mid VM (8 vCPU)    | 4               | 2                   | 4                    |
+| Large VM (16 vCPU) | 4               | 4                   | 8                    |
+
+Lower DICOM_PARSE_WORKERS to `0` to fall back to the default thread
+executor (useful on tiny boxes where per-process import cost dominates).
+
+### Performance benchmarks
+
+Run the regression suite to catch perf regressions before merge:
+
+```bash
+pytest tests/performance/test_stow_benchmark.py --benchmark-only \
+  --benchmark-columns=mean,median,min,max,stddev,rounds \
+  --benchmark-autosave
+```
+
+The default invocation runs the **50** and **500-instance** STOW
+scenarios.  The heavyweight **5 000-instance** benchmark is opt-in
+because a single round can take tens of seconds on a fast machine:
+
+```bash
+pytest tests/performance/test_stow_benchmark.py --benchmark-only \
+  --run-stow-5k
+```
+
+Auto-saved benchmark JSON lives under `tests/performance/.benchmarks/`.
+Compare against a previous run with `--benchmark-compare`.
+
 ## Known Limitations
 
 - No bulk import/export

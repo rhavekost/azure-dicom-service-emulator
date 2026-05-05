@@ -232,18 +232,16 @@ def test_boundary_with_lf_endings():
     assert result[0].data == b"unixdata"
 
 
-def test_malformed_boundary_raises_error():
-    """Body with mismatched boundary produces garbled results.
+def test_malformed_boundary_returns_no_parts():
+    """Body with mismatched boundary returns zero parts (no garbled output).
 
     When the body uses a different boundary than declared in Content-Type,
-    splitting fails to separate parts correctly. The entire body is treated
-    as a single chunk. If that chunk happens to contain a \\r\\n\\r\\n
-    sequence (from the inner "wrong" boundary headers), it gets parsed as
-    one part with the header/body split at that point -- producing garbage
-    data rather than cleanly separated DICOM parts.
+    no boundary is found, so the parser returns an empty list rather than
+    a garbled single part with the closing marker leaked into the data.
+    The streaming parser cannot anchor on a boundary that doesn't appear,
+    and refuses to invent one.
     """
     content_type = "multipart/related; boundary=correctboundary"
-    # Body uses a different boundary than declared
     body = (
         b"--wrongboundary\r\n"
         b"Content-Type: application/dicom\r\n"
@@ -254,12 +252,7 @@ def test_malformed_boundary_raises_error():
 
     result = parse_multipart_related(body, content_type)
 
-    # The mismatch produces a garbled single part (not clean extraction)
-    # The "wrong" headers become the part headers, and everything after
-    # the double CRLF is treated as data (including the closing boundary)
-    assert len(result) == 1
-    assert b"orphandata" in result[0].data
-    assert b"--wrongboundary--" in result[0].data  # closing marker leaked into data
+    assert result == []
 
 
 def test_nested_boundaries_not_supported():
