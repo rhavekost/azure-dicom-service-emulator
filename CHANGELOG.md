@@ -5,7 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-05-05
+
+### Added
+- DICOM parse process pool: pydicom parsing and DICOM-JSON conversion now run
+  in a `ProcessPoolExecutor` (spawn context) so the asyncio event loop stays
+  free to drain the request socket while another core handles parse work.
+  New `app/services/dicom_parse_worker.py` is a deliberately
+  picklable, FastAPI/SQLAlchemy-free worker module.
+- Outbox sweeper for at-least-once event delivery: on startup, replays any
+  `change_feed` rows whose `event_published_at` is NULL (rows persisted but
+  never published because the previous process died between commit and the
+  fire-and-forget publish task completing). New
+  `app/services/events/outbox.py`.
+- Streaming multipart parsing for STOW-RS and bulk chunking — see new tests
+  `tests/unit/services/test_multipart_streaming.py` and
+  `tests/unit/routers/test_stow_bulk_chunking.py`.
+- Performance regression suite: `tests/performance/test_stow_benchmark.py`
+  with 50 / 500 / opt-in 5 000 instance STOW scenarios via `pytest-benchmark`.
+- New env vars (all with safe defaults — no migration required):
+  - `UVICORN_WORKERS` (default `4`) — uvicorn worker process count
+  - `DICOM_PARSE_WORKERS` (default `os.cpu_count()`, `0` disables) — parse
+    pool size
+  - `DICOM_PARSE_INFLIGHT` (default `2 × DICOM_PARSE_WORKERS`) — peak
+    in-flight parts per STOW request
+  - `DB_POOL_SIZE` (default `20`), `DB_MAX_OVERFLOW` (default `20`),
+    `DB_POOL_TIMEOUT_SECONDS` (default `30`),
+    `DB_POOL_RECYCLE_SECONDS` (default `1800`)
+  - `EVENT_DRAIN_TIMEOUT_SECONDS` (default `30`) — bounds lifespan shutdown
+    while flushing in-flight publishes
+  - `OUTBOX_SWEEP_PAGE_SIZE`, `OUTBOX_SWEEP_MAX_AGE_SECONDS`
+
+### Changed
+- `app/routers/stow.py` rewritten around the parse pool with bulk chunking
+  and streaming dispatch (~1,200 LOC delta).
+- SQLAlchemy engine pool sized via env vars (was hardcoded `5/10`).
+- Dockerfile / docker-compose updated for multi-worker uvicorn defaults.
 
 ### Fixed
 - Multi-worker startup race when initializing the PostgreSQL schema. With
@@ -139,10 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Smoke test script (`scripts/smoke_test.py`)
 - Layered test directory structure: `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/performance/`
 
-[0.3.4]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.0...v0.3.1
+[0.4.0]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/rhavekost/azure-dicom-service-emulator/compare/v0.3.1...v0.3.2

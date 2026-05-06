@@ -19,9 +19,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.config import DICOM_PARSE_WORKERS
+from app.config import DICOM_PARSE_WORKERS, EVENT_DRAIN_TIMEOUT_SECONDS, EXPIRY_INTERVAL_SECONDS
 from app.config import DICOM_STORAGE_DIR as _DICOM_STORAGE_DIR_STR
-from app.config import EVENT_DRAIN_TIMEOUT_SECONDS, EXPIRY_INTERVAL_SECONDS
 from app.database import AsyncSessionLocal, Base, engine
 from app.dependencies import set_event_manager
 from app.routers import changefeed, debug, extended_query_tags, operations, qido, stow, ups, wado
@@ -97,7 +96,8 @@ async def lifespan(app: FastAPI):
     # handlers (and tests) can register fire-and-forget event tasks
     # without leaking references — task.add_done_callback removes them
     # from the set as they complete.
-    app.state.pending_event_tasks: set[asyncio.Task] = set()
+    pending_event_tasks: set[asyncio.Task] = set()
+    app.state.pending_event_tasks = pending_event_tasks
 
     # Boot the DICOM parse process pool used by stow_rs to keep pydicom
     # work off the event loop.  ``spawn`` is portable across platforms
@@ -178,7 +178,7 @@ app = FastAPI(
         "Provides DICOMweb (STOW-RS, WADO-RS, QIDO-RS) plus Azure-specific APIs "
         "(Change Feed, Extended Query Tags, Operations)."
     ),
-    version="0.3.4",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
