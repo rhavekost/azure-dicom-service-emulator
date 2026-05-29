@@ -25,7 +25,7 @@ def load_providers_from_config() -> list[EventProvider]:
         "providers": [
             {"type": "in_memory", "enabled": true},
             {"type": "file", "enabled": true, "file_path": "/tmp/events.jsonl"},
-            {"type": "webhook", "enabled": true, "url": "https://...", "retry_attempts": 3},
+            {"type": "webhook", "enabled": true, "url": "https://...", "retry_attempts": 3, "verify_ssl": true},
             {"type": "azure_storage_queue", "enabled": true, "connection_string": "...", "queue_name": "..."}
         ]
     }
@@ -114,7 +114,10 @@ def _create_provider(provider_type: str, config: dict[str, Any]) -> EventProvide
             logger.error("Webhook provider missing 'url' configuration")
             return None
         retry_attempts = config.get("retry_attempts", 3)
-        return WebhookEventProvider(url=url, retry_attempts=retry_attempts)
+        # verify_ssl defaults to True (safe default); set False to allow an
+        # https endpoint with a self-signed / private CA cert in local dev.
+        verify_ssl = config.get("verify_ssl", True)
+        return WebhookEventProvider(url=url, retry_attempts=retry_attempts, verify_ssl=verify_ssl)
 
     elif provider_type == "azure_storage_queue":
         connection_string = config.get("connection_string")

@@ -121,3 +121,54 @@ async def test_webhook_provider_gives_up_after_retries():
 
         # Should have tried 3 times
         assert mock_post.await_count == 3
+
+
+def test_webhook_provider_verifies_tls_by_default():
+    """The provider verifies TLS certificates unless explicitly told not to."""
+    assert WebhookEventProvider("https://webhook.site/test").verify_ssl is True
+
+
+@pytest.mark.asyncio
+async def test_webhook_provider_passes_verify_ssl_to_client_on_publish():
+    """verify_ssl=False must reach the httpx client so self-signed dev certs work."""
+    real_client_cls = httpx.AsyncClient
+    captured = {}
+
+    def _capturing_client(*args, **kwargs):
+        captured["verify"] = kwargs.get("verify")
+        return real_client_cls(*args, **kwargs)
+
+    with patch("httpx.AsyncClient", side_effect=_capturing_client):
+        with patch.object(real_client_cls, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value.status_code = 200
+
+            provider = WebhookEventProvider("https://webhook.site/test", verify_ssl=False)
+            event = DicomEvent.from_instance_created(
+                "1.2.3", "4.5.6", "7.8.9", 1, "http://localhost"
+            )
+            await provider.publish(event)
+
+    assert captured["verify"] is False
+
+
+@pytest.mark.asyncio
+async def test_webhook_provider_passes_verify_ssl_to_client_on_publish_batch():
+    """verify_ssl=False must also reach the shared client used by publish_batch."""
+    real_client_cls = httpx.AsyncClient
+    captured = {}
+
+    def _capturing_client(*args, **kwargs):
+        captured["verify"] = kwargs.get("verify")
+        return real_client_cls(*args, **kwargs)
+
+    with patch("httpx.AsyncClient", side_effect=_capturing_client):
+        with patch.object(real_client_cls, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value.status_code = 200
+
+            provider = WebhookEventProvider("https://webhook.site/test", verify_ssl=False)
+            events = [
+                DicomEvent.from_instance_created("1.2.3", "4.5.6", "7.8.9", 1, "http://localhost")
+            ]
+            await provider.publish_batch(events)
+
+    assert captured["verify"] is False

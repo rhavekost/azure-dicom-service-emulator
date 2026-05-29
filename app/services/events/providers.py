@@ -96,11 +96,26 @@ class WebhookEventProvider(EventProvider):
     contract), but the underlying TLS handshake + connection pool is
     shared, which is significant when a STOW request fans out hundreds
     of ``DicomImageCreated`` events.
+
+    ``verify_ssl`` controls TLS certificate verification on the outgoing
+    POSTs.  It defaults to ``True`` (verify, the safe default) and can be
+    set to ``False`` to target an ``https`` endpoint fronted by a
+    self-signed / private CA certificate — common in local development
+    behind a reverse proxy.  Disable it only in trusted local
+    environments, never in production.
     """
 
-    def __init__(self, url: str, retry_attempts: int = 3):
+    def __init__(self, url: str, retry_attempts: int = 3, verify_ssl: bool = True):
         self.url = url
         self.retry_attempts = retry_attempts
+        self.verify_ssl = verify_ssl
+        if not verify_ssl:
+            logger.warning(
+                "WebhookEventProvider TLS verification is DISABLED for url=%s. "
+                "This is intended for local development against self-signed "
+                "certificates only; do not disable verification in production.",
+                url,
+            )
 
     def _get_retry_decorator(self):
         """Get retry decorator with configured attempts."""
@@ -127,7 +142,7 @@ class WebhookEventProvider(EventProvider):
 
             @retry_decorator
             async def _do_send_oneshot() -> None:
-                async with httpx.AsyncClient() as oneshot:
+                async with httpx.AsyncClient(verify=self.verify_ssl) as oneshot:
                     response = await oneshot.post(self.url, json=event.to_dict(), timeout=5.0)
                     response.raise_for_status()
 
@@ -155,7 +170,7 @@ class WebhookEventProvider(EventProvider):
         """
         if not events:
             return
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=self.verify_ssl) as client:
             for event in events:
                 await self._send_webhook(event, client=client)
 

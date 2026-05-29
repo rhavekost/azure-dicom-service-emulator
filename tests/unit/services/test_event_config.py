@@ -73,6 +73,40 @@ def test_load_webhook_provider_with_config(monkeypatch):
     assert webhook_provider.retry_attempts == 5
 
 
+def test_load_webhook_provider_verify_ssl_defaults_true(monkeypatch):
+    """Webhook provider verifies TLS by default when verify_ssl is omitted."""
+    config = {
+        "providers": [{"type": "webhook", "enabled": True, "url": "https://api.example.com/events"}]
+    }
+    monkeypatch.setenv("EVENT_PROVIDERS", json.dumps(config))
+
+    providers = load_providers_from_config()
+
+    assert len(providers) == 1
+    assert isinstance(providers[0], WebhookEventProvider)
+    assert providers[0].verify_ssl is True
+
+
+def test_load_webhook_provider_verify_ssl_can_be_disabled(monkeypatch):
+    """verify_ssl=False in config disables TLS verification on the provider."""
+    config = {
+        "providers": [
+            {
+                "type": "webhook",
+                "enabled": True,
+                "url": "https://api.example.com/events",
+                "verify_ssl": False,
+            }
+        ]
+    }
+    monkeypatch.setenv("EVENT_PROVIDERS", json.dumps(config))
+
+    providers = load_providers_from_config()
+
+    assert len(providers) == 1
+    assert providers[0].verify_ssl is False
+
+
 def test_load_azure_queue_provider(monkeypatch):
     """Test loading Azure Storage Queue provider."""
     config = {

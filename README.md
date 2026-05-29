@@ -242,6 +242,18 @@ curl http://localhost:8080/v2/studies/{study}/series/{series}/instances/{instanc
 | `DICOM_STORAGE_DIR` | `/data/dicom` | Where DCM files are stored |
 | `EVENT_PROVIDERS` | (empty) | JSON array of event provider configs. See `docker-compose.yml` for Azure Storage Queue example. |
 
+### Webhook event provider
+
+```json
+{ "type": "webhook", "enabled": true, "url": "https://...", "retry_attempts": 3, "verify_ssl": true }
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `url` | (required) | Endpoint each event is POSTed to. |
+| `retry_attempts` | `3` | Max attempts per event (exponential backoff). |
+| `verify_ssl` | `true` | Verify the endpoint's TLS certificate. Set to `false` to POST to an `https` endpoint fronted by a self-signed / private CA certificate (local development only — never disable in production). |
+
 ## Storage Layout
 
 ```
