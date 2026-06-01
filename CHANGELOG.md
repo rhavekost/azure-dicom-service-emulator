@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-06-01
+
+### Added
+- `DISABLE_SSL_VERIFICATION` env var — disables TLS certificate validation for
+  event webhook/queue providers in environments that use self-signed certificates.
+
+### Fixed
+- mypy type error in `app/services/multipart.py` — bytearray slice now correctly
+  cast to `bytes` before passing to `_is_closing_marker`.
+
+### Changed
+- GitHub Actions bumped to latest pinned SHAs: `actions/checkout` v6.0.2,
+  `actions/setup-python` v6.2.0, `astral-sh/setup-uv` v8.1.0,
+  `docker/metadata-action` v6.1.0, `docker/build-push-action` v7.2.0.
+
 ## [0.4.0] - 2026-05-05
 
 ### Added
