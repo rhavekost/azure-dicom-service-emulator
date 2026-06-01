@@ -180,7 +180,7 @@ def _scan_buffer(buf: bytearray, boundary_bytes: bytes, eof: bool):
         if pos + 2 > buf_len:
             break
 
-        if _is_closing_marker(buf[pos : pos + 2]):
+        if _is_closing_marker(bytes(buf[pos : pos + 2])):
             parts.append(_CLOSING_BOUNDARY)
             consumed = pos + 2
             return parts, consumed
